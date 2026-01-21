@@ -1,0 +1,9 @@
+[project]
+name = "flood-forecasting-orchestration"
+version = "0.1.0"
+description = "Dagster pipelines for flood forecasting"
+requires-python = ">=3.11"
+dependencies = [
+    "dagster",
+    "dagster-webserver",
+]

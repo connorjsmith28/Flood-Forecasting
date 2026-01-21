@@ -1,0 +1,9 @@
+[project]
+name = "flood-forecasting-transform"
+version = "0.1.0"
+description = "dbt models for flood forecasting data transformation"
+requires-python = ">=3.11"
+dependencies = [
+    "dbt-core",
+    "sqlfluff",
+]
