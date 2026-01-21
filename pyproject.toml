@@ -14,11 +14,3 @@ dev = [
     "ruff",
     "pytest",
 ]
-orchestration = [
-    "dagster",
-    "dagster-webserver",
-]
-transform = [
-    "dbt-core",
-    "sqlfluff",
-]
