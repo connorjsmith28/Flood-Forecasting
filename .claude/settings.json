@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [],
+    "deny": []
+  },
+  "mcpServers": {
+    "linear": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/mcp-server-linear", "--oauth"],
+      "tools": ["get_issue", "search_issues", "get_user"]
+    },
+    "notion": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/mcp-server-notion", "--oauth"],
+      "tools": ["read_page", "search_pages", "get_page", "get_user"]
+    }
+  }
+}

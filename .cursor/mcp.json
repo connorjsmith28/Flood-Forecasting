@@ -1,0 +1,33 @@
+{
+  "mcpServers": {
+    "linear": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://mcp.linear.app/sse"],
+      "tools": [
+        "get_issue",
+        "list_issues",
+        "create_issue",
+        "update_issue",
+        "get_user",
+        "list_comments",
+        "create_comment"
+      ]
+    },
+    "notion": {
+      "command": "npx",
+      "args": ["-y", "@notionhq/notion-mcp-server"],
+      "env": {
+        "NOTION_TOKEN": ""
+      },
+      "tools": [
+        "retrieve-a-page",
+        "post-page",
+        "patch-page",
+        "get-block-children",
+        "patch-block-children",
+        "post-search",
+        "get-self"
+      ]
+    }
+  }
+}
