@@ -1,0 +1,69 @@
+version: 2
+
+models:
+  - name: stg_sites
+    description: Cleaned and standardized site metadata
+    columns:
+      - name: site_id
+        description: USGS site identifier
+        tests:
+          - unique
+          - not_null
+      - name: station_name
+        description: Station name
+      - name: latitude
+        description: Decimal latitude (WGS84)
+        tests:
+          - not_null
+      - name: longitude
+        description: Decimal longitude (WGS84)
+        tests:
+          - not_null
+      - name: drainage_area_sq_mi
+        description: Upstream drainage area in square miles
+      - name: huc_code
+        description: 8-digit Hydrologic Unit Code
+      - name: huc_region
+        description: 2-digit HUC region code
+
+  - name: stg_streamflow
+    description: Cleaned streamflow observations
+    columns:
+      - name: site_id
+        description: USGS site identifier
+        tests:
+          - not_null
+      - name: observed_at
+        description: Observation timestamp (UTC)
+        tests:
+          - not_null
+      - name: streamflow_cfs
+        description: Discharge in cubic feet per second
+      - name: streamflow_cms
+        description: Discharge in cubic meters per second
+      - name: is_estimated
+        description: Whether the value is estimated (from qualifiers)
+
+  - name: stg_weather
+    description: Cleaned NLDAS-2 meteorological data
+    columns:
+      - name: longitude
+        description: Grid point longitude
+        tests:
+          - not_null
+      - name: latitude
+        description: Grid point latitude
+        tests:
+          - not_null
+      - name: observed_at
+        description: Observation timestamp (UTC)
+        tests:
+          - not_null
+      - name: precipitation_mm
+        description: Hourly precipitation in millimeters
+      - name: temperature_c
+        description: 2-m air temperature in Celsius
+      - name: humidity_pct
+        description: Relative humidity percentage (approximate)
+      - name: wind_speed_ms
+        description: Wind speed in m/s
