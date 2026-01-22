@@ -1,3 +1,6 @@
+# Run full pipeline setup (extract + transform)
+setup: extract transform
+
 # Lint all code
 lint:
     ruff check .
