@@ -1,0 +1,80 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Raw data extracted from hydrology APIs via Dagster
+    schema: raw
+    tables:
+      - name: sites_missouri_basin
+        description: USGS monitoring sites in the Missouri River Basin (HUC 10)
+        columns:
+          - name: site_id
+            description: USGS site identifier
+          - name: station_name
+            description: Station name
+          - name: latitude
+            description: Decimal latitude
+          - name: longitude
+            description: Decimal longitude
+          - name: huc_code
+            description: Hydrologic Unit Code
+          - name: altitude
+            description: Site altitude in feet
+
+      - name: site_metadata
+        description: Detailed USGS site metadata including drainage area
+        columns:
+          - name: site_id
+            description: USGS site identifier
+          - name: station_name
+            description: Station name
+          - name: latitude
+            description: Decimal latitude
+          - name: longitude
+            description: Decimal longitude
+          - name: drainage_area_sq_mi
+            description: Drainage area in square miles
+          - name: huc_code
+            description: Hydrologic Unit Code
+
+      - name: gages_basin_attributes
+        description: GAGES-II/CAMELS watershed characteristics
+        columns:
+          - name: gauge_id
+            description: Gauge identifier (may vary by source)
+
+      - name: streamflow_raw
+        description: USGS instantaneous streamflow observations (15-minute intervals)
+        columns:
+          - name: site_id
+            description: USGS site identifier
+          - name: datetime
+            description: Observation timestamp
+          - name: streamflow_cfs
+            description: Discharge in cubic feet per second
+          - name: qualifiers
+            description: Data quality flags
+          - name: extracted_at
+            description: When the data was extracted
+
+      - name: nldas_forcing
+        description: NLDAS-2 hourly meteorological forcing data
+        columns:
+          - name: longitude
+            description: Longitude of grid point
+          - name: latitude
+            description: Latitude of grid point
+          - name: datetime
+            description: Observation timestamp
+          - name: prcp
+            description: Precipitation (kg/m^2)
+          - name: temp
+            description: 2-m temperature (K)
+          - name: humidity
+            description: Specific humidity (kg/kg)
+          - name: wind_u
+            description: Zonal wind component (m/s)
+          - name: wind_v
+            description: Meridional wind component (m/s)
+          - name: extracted_at
+            description: When the data was extracted

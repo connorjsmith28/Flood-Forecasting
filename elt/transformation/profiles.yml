@@ -1,0 +1,7 @@
+flood_forecasting:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: "{{ env_var('FLOOD_FORECASTING_DB', 'flood_forecasting.duckdb') }}"
+      threads: 4
