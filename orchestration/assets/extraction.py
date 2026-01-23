@@ -21,8 +21,8 @@ from orchestration.resources import DuckDBResource
 class ExtractionConfig(Config):
     """Base configuration for extraction assets."""
 
-    sample_mode: bool = True  # If True, only load a small sample for testing
-    max_sites: int = 10  # Max sites to load in sample mode
+    sample_mode: bool = True  # If True, only load a limited sample for USGS data
+    max_sites: int = 100  # Max sites to load in sample mode (controls USGS data volume)
 
 
 class StreamflowConfig(ExtractionConfig):
@@ -160,10 +160,7 @@ def missouri_basin_sites(
             metadata={"num_sites": 0, "status": "empty"},
         )
 
-    # Apply sample mode limit
-    if config.sample_mode:
-        df = df.head(config.max_sites)
-        context.log.info(f"Sample mode: limited to {config.max_sites} sites")
+    # Always full load - dataset is small (~12k records max)
 
     # Store in DuckDB (full replace - this is reference data)
     with duckdb.get_connection() as conn:
@@ -178,7 +175,6 @@ def missouri_basin_sites(
     return MaterializeResult(
         metadata={
             "num_sites": len(df),
-            "sample_mode": config.sample_mode,
             "columns": MetadataValue.json(df.columns),
             "sample_sites": MetadataValue.json(
                 df.head(5).select("site_id", "station_name").to_dicts()
@@ -214,9 +210,7 @@ def gages_attributes(
             metadata={"num_basins": 0, "status": "empty"},
         )
 
-    if config.sample_mode:
-        df = df.head(config.max_sites)
-        context.log.info(f"Sample mode: limited to {config.max_sites} basins")
+    # Always full load - dataset is small (~700 rows)
 
     # Store in DuckDB (full replace - this is reference data)
     with duckdb.get_connection() as conn:
@@ -231,7 +225,6 @@ def gages_attributes(
     return MaterializeResult(
         metadata={
             "num_basins": len(df),
-            "sample_mode": config.sample_mode,
             "num_attributes": len(df.columns),
             "columns": MetadataValue.json(df.columns[:20]),
         },

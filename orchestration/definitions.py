@@ -7,6 +7,7 @@ Or from the orchestration directory:
     dagster dev
 """
 
+import os
 from pathlib import Path
 
 from dagster import Definitions, define_asset_job, AssetSelection
@@ -30,6 +31,11 @@ DBT_PROJECT_DIR = PROJECT_ROOT / "elt" / "transformation"
 def get_db_path() -> str:
     """Get path to DuckDB database file."""
     return str(PROJECT_ROOT / "flood_forecasting.duckdb")
+
+
+# Set DUCKDB_PATH env var so dbt profiles.yml can reference it
+# This ensures Dagster and dbt always use the same database file
+os.environ["DUCKDB_PATH"] = get_db_path()
 
 
 # Define asset jobs
