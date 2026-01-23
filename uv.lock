@@ -1017,7 +1017,6 @@ dependencies = [
     { name = "httpx" },
     { name = "polars" },
     { name = "pygeohydro" },
-    { name = "pynldas2" },
     { name = "scikit-learn" },
     { name = "torch" },
 ]
@@ -1043,7 +1042,6 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "polars", specifier = ">=1.0.0" },
     { name = "pygeohydro", specifier = ">=0.18.0" },
-    { name = "pynldas2", specifier = ">=0.18.0" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "scikit-learn", specifier = ">=1.5.0" },
@@ -2724,27 +2722,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pynldas2"
-version = "0.19.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "netcdf4", version = "1.7.3", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'ARM64' and sys_platform == 'win32'" },
-    { name = "netcdf4", version = "1.7.4", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'ARM64' or sys_platform != 'win32'" },
-    { name = "numpy" },
-    { name = "pandas" },
-    { name = "pyproj" },
-    { name = "rioxarray", version = "0.19.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "rioxarray", version = "0.20.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "shapely" },
-    { name = "tiny-retriever" },
-    { name = "xarray" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/b3/68/99bd7179ef6b7208ce93eddd579bf0f7d8356dea8d43c27afd907cda87c4/pynldas2-0.19.3.tar.gz", hash = "sha256:335dd6151857be5a1142060353695af37f17be7ffe36131fc6ed80d4ecc54ab1", size = 29644, upload-time = "2025-03-07T19:11:44.61Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9c/1c/30e0c096a19c667c56c635f7e0ae59ffa6627714a3dd93802a52cf0450bb/pynldas2-0.19.3-py3-none-any.whl", hash = "sha256:261fd55b85cf182f2e9b28d424cec430eb2eab94fbb22ac95e4fbee0988e88db", size = 16636, upload-time = "2025-03-07T19:11:43.038Z" },
-]
-
-[[package]]
 name = "pyogrio"
 version = "0.12.1"
 source = { registry = "https://pypi.org/simple" }
@@ -3602,19 +3579,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/b7/4d/08c89e34946fce2aec4fbb45c9016efd5f4d7f24af8e5d93296e935631d8/threadpoolctl-3.6.0.tar.gz", hash = "sha256:8ab8b4aa3491d812b623328249fab5302a68d2d71745c8a4c719a2fcaba9f44e", size = 21274, upload-time = "2025-03-13T13:49:23.031Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/32/d5/f9a850d79b0851d1d4ef6456097579a9005b31fea68726a4ae5f2d82ddd9/threadpoolctl-3.6.0-py3-none-any.whl", hash = "sha256:43a0b8fd5a2928500110039e43a5eed8480b918967083ea48dc3ab9f13c4a7fb", size = 18638, upload-time = "2025-03-13T13:49:21.846Z" },
-]
-
-[[package]]
-name = "tiny-retriever"
-version = "0.1.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "aiofiles" },
-    { name = "aiohttp" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/cd/27/7c59e1a43538e437046ad6a25c6c170507378e18c60b43485ad457ee9f5b/tiny_retriever-0.1.3.tar.gz", hash = "sha256:894d0e9289023b45c06aee6d9c656037b1a1f0ed64eae5635d260da42989b0cd", size = 508751, upload-time = "2025-02-20T14:13:45.359Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/1a/84/c6d04b4b4e9e1067bd78724efd125f95b97f06897f24b0d19df75345dca2/tiny_retriever-0.1.3-py3-none-any.whl", hash = "sha256:c62e4b4ed7ca5a12cfe025c4f7184d7ffc0774d71e160edd870f2e4566a848cc", size = 11658, upload-time = "2025-02-20T14:13:43.202Z" },
 ]
 
 [[package]]
