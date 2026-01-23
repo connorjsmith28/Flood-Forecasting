@@ -33,12 +33,12 @@ class StreamflowConfig(ExtractionConfig):
     site_ids: list[str] | None = None
 
 
-class NLDASConfig(ExtractionConfig):
-    """Configuration for NLDAS forcing data extraction."""
+class WeatherConfig(ExtractionConfig):
+    """Configuration for weather forcing data extraction (Open-Meteo)."""
 
     days_back: int = 7
     incremental_days: int = 2
-    variables: list[str] = ["prcp", "temp", "humidity", "wind_u", "wind_v"]
+    variables: list[str] = ["prcp", "temp", "humidity", "wind_speed", "wind_direction"]
 
 
 class SiteConfig(ExtractionConfig):
@@ -55,7 +55,7 @@ TBL_MISSOURI_SITES = "sites_missouri_basin"
 TBL_GAGES_ATTRS = "gages_basin_attributes"
 TBL_SITE_METADATA = "site_metadata"
 TBL_STREAMFLOW = "streamflow_raw"
-TBL_NLDAS = "nldas_forcing"
+TBL_WEATHER = "weather_forcing"
 
 
 def get_high_watermark(
@@ -422,16 +422,18 @@ def usgs_streamflow_raw(
 
 @asset(
     group_name="extraction",
-    description="Raw NLDAS-2 meteorological forcing data (incremental)",
+    description="Raw meteorological forcing data from Open-Meteo (incremental)",
     compute_kind="python",
     deps=[usgs_streamflow_raw],  # Depend on streamflow to avoid DuckDB write lock conflicts
 )
-def nldas_forcing_raw(
+def weather_forcing_raw(
     context: AssetExecutionContext,
-    config: NLDASConfig,
+    config: WeatherConfig,
     duckdb: DuckDBResource,
 ) -> MaterializeResult:
-    """Extract NLDAS-2 hourly meteorological forcing data.
+    """Extract hourly meteorological forcing data from Open-Meteo.
+
+    Replaces the discontinued NASA NLDAS-2 Data Rods service.
 
     Supports incremental loading:
     - First run: loads `days_back` days of history
@@ -439,7 +441,7 @@ def nldas_forcing_raw(
 
     Uses (longitude, latitude, datetime) as the unique key to avoid duplicates.
     """
-    from elt.extraction.nldas import fetch_nldas_forcing
+    from elt.extraction.weather import fetch_weather_forcing
 
     # Get site coordinates from metadata
     with duckdb.get_connection() as conn:
@@ -461,7 +463,7 @@ def nldas_forcing_raw(
     # Determine date range based on watermark
     # NLDAS API only accepts dates up to yesterday, not today
     end_date = datetime.now() - timedelta(days=1)
-    watermark = get_high_watermark(duckdb, TBL_NLDAS, "datetime")
+    watermark = get_high_watermark(duckdb, TBL_WEATHER, "datetime")
 
     if watermark:
         start_date = watermark - timedelta(days=config.incremental_days)
@@ -474,38 +476,54 @@ def nldas_forcing_raw(
         context.log.info(f"Initial load: fetching {config.days_back} days of history")
 
     context.log.info(
-        f"Fetching NLDAS forcing for {len(coordinates)} locations "
+        f"Fetching weather forcing for {len(coordinates)} locations "
         f"from {start_date.date()} to {end_date.date()}"
     )
 
     try:
-        df = fetch_nldas_forcing(
+        df = fetch_weather_forcing(
             coordinates=coordinates,
             start_date=start_date,
             end_date=end_date,
             variables=config.variables,
         )
     except Exception as e:
-        context.log.error(f"Failed to fetch NLDAS data: {e}")
-        return MaterializeResult(
-            metadata={"num_records": 0, "status": "fetch_failed", "error": str(e)}
-        )
-
-    if df.is_empty():
-        # Create empty table with expected schema so dbt doesn't fail
-        context.log.warning("No NLDAS data fetched, creating empty table")
+        context.log.error(f"Failed to fetch weather data: {e}")
+        # Create empty table so dbt doesn't fail
         with duckdb.get_connection() as conn:
             conn.execute(f"CREATE SCHEMA IF NOT EXISTS {RAW_SCHEMA}")
             conn.execute(f"""
-                CREATE TABLE IF NOT EXISTS {RAW_SCHEMA}.{TBL_NLDAS} (
+                CREATE TABLE IF NOT EXISTS {RAW_SCHEMA}.{TBL_WEATHER} (
                     longitude DOUBLE,
                     latitude DOUBLE,
                     datetime TIMESTAMP,
                     prcp DOUBLE,
                     temp DOUBLE,
                     humidity DOUBLE,
-                    wind_u DOUBLE,
-                    wind_v DOUBLE,
+                    wind_speed DOUBLE,
+                    wind_direction DOUBLE,
+                    extracted_at TIMESTAMP
+                )
+            """)
+        return MaterializeResult(
+            metadata={"num_records": 0, "status": "fetch_failed", "error": str(e)}
+        )
+
+    if df.is_empty():
+        # Create empty table with expected schema so dbt doesn't fail
+        context.log.warning("No weather data fetched, creating empty table")
+        with duckdb.get_connection() as conn:
+            conn.execute(f"CREATE SCHEMA IF NOT EXISTS {RAW_SCHEMA}")
+            conn.execute(f"""
+                CREATE TABLE IF NOT EXISTS {RAW_SCHEMA}.{TBL_WEATHER} (
+                    longitude DOUBLE,
+                    latitude DOUBLE,
+                    datetime TIMESTAMP,
+                    prcp DOUBLE,
+                    temp DOUBLE,
+                    humidity DOUBLE,
+                    wind_speed DOUBLE,
+                    wind_direction DOUBLE,
                     extracted_at TIMESTAMP
                 )
             """)
@@ -516,7 +534,7 @@ def nldas_forcing_raw(
 
     # Upsert to avoid duplicates
     new_records = upsert_timeseries(
-        duckdb, df, TBL_NLDAS, key_columns=["longitude", "latitude", "datetime"]
+        duckdb, df, TBL_WEATHER, key_columns=["longitude", "latitude", "datetime"]
     )
 
     context.log.info(f"Inserted {new_records} new records (fetched {len(df)} total)")

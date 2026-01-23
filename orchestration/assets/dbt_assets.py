@@ -19,7 +19,7 @@ from orchestration.assets.extraction import (
     gages_attributes,
     usgs_site_metadata,
     usgs_streamflow_raw,
-    nldas_forcing_raw,
+    weather_forcing_raw,
 )
 
 # Path to dbt project
@@ -35,7 +35,7 @@ DBT_PROJECT_DIR = Path(__file__).parent.parent.parent / "elt" / "transformation"
         gages_attributes,
         usgs_site_metadata,
         usgs_streamflow_raw,
-        nldas_forcing_raw,
+        weather_forcing_raw,
     ],
 )
 def dbt_flood_forecasting(

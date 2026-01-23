@@ -68,12 +68,5 @@ def get_default_duckdb_path() -> str:
 
     Returns a path in the project root directory.
     """
-    # Try to find project root by looking for pyproject.toml
-    current = Path.cwd()
-    while current != current.parent:
-        if (current / "pyproject.toml").exists():
-            return str(current / "flood_forecasting.duckdb")
-        current = current.parent
-
-    # Fallback to current directory
+    # I think we want to figure out where we will put the db. It would be great to better sync this with dbt. 
     return "flood_forecasting.duckdb"

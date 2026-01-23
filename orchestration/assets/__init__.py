@@ -3,7 +3,7 @@
 from orchestration.assets.extraction import (
     usgs_site_metadata,
     usgs_streamflow_raw,
-    nldas_forcing_raw,
+    weather_forcing_raw,
     gages_attributes,
     missouri_basin_sites,
 )
@@ -11,7 +11,7 @@ from orchestration.assets.extraction import (
 __all__ = [
     "usgs_site_metadata",
     "usgs_streamflow_raw",
-    "nldas_forcing_raw",
+    "weather_forcing_raw",
     "gages_attributes",
     "missouri_basin_sites",
 ]

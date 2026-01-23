@@ -57,24 +57,24 @@ sources:
           - name: extracted_at
             description: When the data was extracted
 
-      - name: nldas_forcing
-        description: NLDAS-2 hourly meteorological forcing data
+      - name: weather_forcing
+        description: Hourly meteorological forcing data from Open-Meteo
         columns:
           - name: longitude
-            description: Longitude of grid point
+            description: Longitude of location
           - name: latitude
-            description: Latitude of grid point
+            description: Latitude of location
           - name: datetime
-            description: Observation timestamp
+            description: Observation timestamp (UTC)
           - name: prcp
-            description: Precipitation (kg/m^2)
+            description: Precipitation (mm)
           - name: temp
-            description: 2-m temperature (K)
+            description: 2-m temperature (°C)
           - name: humidity
-            description: Specific humidity (kg/kg)
-          - name: wind_u
-            description: Zonal wind component (m/s)
-          - name: wind_v
-            description: Meridional wind component (m/s)
+            description: Relative humidity (%)
+          - name: wind_speed
+            description: 10-m wind speed (m/s)
+          - name: wind_direction
+            description: Wind direction (degrees)
           - name: extracted_at
             description: When the data was extracted

@@ -7,7 +7,6 @@ Or from the orchestration directory:
     dagster dev
 """
 
-import os
 from pathlib import Path
 
 from dagster import Definitions, define_asset_job, AssetSelection
@@ -19,7 +18,7 @@ from orchestration.assets import (
     gages_attributes,
     usgs_site_metadata,
     usgs_streamflow_raw,
-    nldas_forcing_raw,
+    weather_forcing_raw,
 )
 from orchestration.assets.dbt_assets import dbt_flood_forecasting
 
@@ -30,15 +29,13 @@ DBT_PROJECT_DIR = PROJECT_ROOT / "elt" / "transformation"
 
 def get_db_path() -> str:
     """Get path to DuckDB database file."""
-    if db_path := os.environ.get("FLOOD_FORECASTING_DB"):
-        return db_path
     return str(PROJECT_ROOT / "flood_forecasting.duckdb")
 
 
 # Define asset jobs
 extraction_job = define_asset_job(
     name="extraction_job",
-    description="Extract all raw data from USGS, NLDAS, and GAGES-II",
+    description="Extract all raw data from USGS, Open-Meteo, and GAGES-II",
     selection=AssetSelection.groups("extraction"),
 )
 
@@ -54,10 +51,10 @@ streamflow_update_job = define_asset_job(
     selection=AssetSelection.assets(usgs_streamflow_raw),
 )
 
-forcing_update_job = define_asset_job(
-    name="forcing_update_job",
-    description="Incremental NLDAS forcing data update",
-    selection=AssetSelection.assets(nldas_forcing_raw),
+weather_update_job = define_asset_job(
+    name="weather_update_job",
+    description="Incremental weather forcing data update",
+    selection=AssetSelection.assets(weather_forcing_raw),
 )
 
 transformation_job = define_asset_job(
@@ -81,14 +78,14 @@ defs = Definitions(
         gages_attributes,
         usgs_site_metadata,
         usgs_streamflow_raw,
-        nldas_forcing_raw,
+        weather_forcing_raw,
         dbt_flood_forecasting,
     ],
     jobs=[
         extraction_job,
         site_setup_job,
         streamflow_update_job,
-        forcing_update_job,
+        weather_update_job,
         transformation_job,
         full_pipeline_job,
     ],
