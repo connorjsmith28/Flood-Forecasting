@@ -31,6 +31,9 @@ extract-fresh:
 dbt_project := "elt/transformation"
 dbt_args := "--project-dir " + dbt_project + " --profiles-dir " + dbt_project
 
+# DuckDB path (must match orchestration/definitions.py)
+export DUCKDB_PATH := justfile_directory() / "flood_forecasting.duckdb"
+
 # Run full transformation (dbt build = run + test)
 transform:
     uv run dbt build {{dbt_args}}
