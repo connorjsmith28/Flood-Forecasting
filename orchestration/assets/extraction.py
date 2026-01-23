@@ -22,7 +22,7 @@ class ExtractionConfig(Config):
     """Base configuration for extraction assets."""
 
     sample_mode: bool = True  # If True, only load a limited sample for USGS data
-    max_sites: int = 10000  # Max sites to load in sample mode (USGS datasets are large)
+    max_sites: int = 100  # Max sites to load in sample mode (controls USGS data volume)
 
 
 class StreamflowConfig(ExtractionConfig):
