@@ -7,6 +7,7 @@ dependencies = [
     "polars>=1.0.0",
     "torch>=2.0.0",
     "scikit-learn>=1.5.0",
+    "wandb",
     "dagster",
     "dagster-webserver",
     "dagster-duckdb",

@@ -1,10 +1,16 @@
-select 
+select
     -- Streamflow data (USGS streamflow extractor)
     streamflow.site_id,
     streamflow.observation_hour,
     streamflow.latitude,
     streamflow.longitude,
     streamflow.streamflow_cfs_mean,
+
+    -- Target: 1-hour ahead streamflow (what we're predicting)
+    lead(streamflow.streamflow_cfs_mean, 1) over (
+        partition by streamflow.site_id
+        order by streamflow.observation_hour
+    ) as streamflow_cfs_target_1h,
     streamflow.streamflow_cfs_max,
     streamflow.streamflow_cfs_min,
     streamflow.observation_count,
