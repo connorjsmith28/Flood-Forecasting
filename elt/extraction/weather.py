@@ -64,7 +64,15 @@ def fetch_weather_forcing(coordinates, start_date, end_date, variables=None):
         variables: List of variable names to fetch (default: prcp, temp, humidity, wind_speed, wind_direction)
     """
     if not variables:
-        variables = ["prcp", "temp", "humidity", "wind_speed", "wind_direction"]
+        variables = [
+            "prcp",
+            "temp",
+            "humidity",
+            "wind_speed",
+            "wind_direction",
+            "rsds",  # Shortwave radiation for PET calculation
+            "pet",   # FAO Penman-Monteith reference ET from Open-Meteo
+        ]
     variables = list(variables)
 
     # Format dates

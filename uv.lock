@@ -1019,6 +1019,7 @@ dependencies = [
     { name = "pygeohydro" },
     { name = "scikit-learn" },
     { name = "torch" },
+    { name = "urllib3" },
 ]
 
 [package.optional-dependencies]
@@ -1046,6 +1047,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "scikit-learn", specifier = ">=1.5.0" },
     { name = "torch", specifier = ">=2.0.0" },
+    { name = "urllib3", specifier = ">=2.6.3" },
 ]
 provides-extras = ["dev"]
 

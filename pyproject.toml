@@ -19,6 +19,7 @@ dependencies = [
     "dataretrieval>=1.0.0",
     "pygeohydro>=0.18.0",
     "h5py>=3.10.0",
+    "urllib3>=2.6.3",
 ]
 
 [project.optional-dependencies]
