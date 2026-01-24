@@ -68,7 +68,6 @@ RAW_SCHEMA = "raw"
 
 # Table names (different from asset names to avoid DuckDB replacement scan conflicts)
 TBL_MISSOURI_SITES = "sites_missouri_basin"
-TBL_GAGES_ATTRS = "gages_basin_attributes"
 TBL_SITE_METADATA = "site_metadata"
 TBL_STREAMFLOW = "streamflow_raw"
 TBL_WEATHER = "weather_forcing"
@@ -196,54 +195,6 @@ def missouri_basin_sites(
             "sample_sites": MetadataValue.json(
                 df.head(5)[["site_id", "station_name"]].to_dict("records")
             ),
-        },
-    )
-
-
-@asset(
-    group_name="extraction",
-    description="GAGES-II watershed attributes for analysis basins",
-    compute_kind="python",
-)
-def gages_attributes(
-    context: AssetExecutionContext,
-    config: SiteConfig,
-    duckdb: DuckDBResource,
-) -> MaterializeResult:
-    """Extract GAGES-II catchment attributes.
-
-    GAGES-II provides hundreds of watershed characteristics including
-    climate, geology, hydrology, land cover, soils, and topography.
-    """
-    from elt.extraction.gages import fetch_gages_attributes
-
-    context.log.info("Fetching GAGES-II attributes...")
-
-    df = fetch_gages_attributes()
-
-    if df.empty:
-        context.log.warning("No GAGES-II attributes returned")
-        return MaterializeResult(
-            metadata={"num_basins": 0, "status": "empty"},
-        )
-
-    # Always full load - dataset is small (~700 rows)
-
-    # Store in DuckDB (full replace - this is reference data)
-    with duckdb.get_connection() as conn:
-        conn.execute(f"CREATE SCHEMA IF NOT EXISTS {RAW_SCHEMA}")
-        conn.execute(f"DROP TABLE IF EXISTS {RAW_SCHEMA}.{TBL_GAGES_ATTRS}")
-        conn.execute(
-            f"CREATE TABLE {RAW_SCHEMA}.{TBL_GAGES_ATTRS} AS SELECT * FROM df"
-        )
-
-    context.log.info(f"Stored GAGES-II attributes for {len(df)} basins")
-
-    return MaterializeResult(
-        metadata={
-            "num_basins": len(df),
-            "num_attributes": len(df.columns),
-            "columns": MetadataValue.json(list(df.columns)[:20]),
         },
     )
 

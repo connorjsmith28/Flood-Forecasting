@@ -1,0 +1,5 @@
+version: 2
+
+models:
+  - name: flood_model
+    description: Flood model using streamflow and weather data

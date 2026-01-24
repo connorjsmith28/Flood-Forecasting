@@ -1,0 +1,7 @@
+Decomission some of the extract pieces that don't exist anymore. 
+
+Gages, HydroATLAS, and NDLS-2 contain attribute data that doesn't need to be streamed. Only water levels and weather do. 
+
+I have pulled the attributes from CAMELSH, and now we have USGS water levels and Mateo weather extractors. 
+
+Figure out how to get weather working. 

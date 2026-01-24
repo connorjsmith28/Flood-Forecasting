@@ -53,6 +53,7 @@ storage/
 target/
 dbt_packages/
 logs/
+.user.yml
 
 # Environment variables
 .env
