@@ -17,6 +17,7 @@ from orchestration.resources import DuckDBResource
 from orchestration.assets import (
     missouri_basin_sites,
     gages_attributes,
+    nldi_basin_attributes,
     usgs_site_metadata,
     usgs_streamflow_raw,
     weather_forcing_raw,
@@ -48,7 +49,7 @@ extraction_job = define_asset_job(
 site_setup_job = define_asset_job(
     name="site_setup_job",
     description="Set up site metadata (run first)",
-    selection=AssetSelection.assets(missouri_basin_sites, gages_attributes, usgs_site_metadata),
+    selection=AssetSelection.assets(missouri_basin_sites, gages_attributes, nldi_basin_attributes, usgs_site_metadata),
 )
 
 streamflow_update_job = define_asset_job(
@@ -82,6 +83,7 @@ defs = Definitions(
     assets=[
         missouri_basin_sites,
         gages_attributes,
+        nldi_basin_attributes,
         usgs_site_metadata,
         usgs_streamflow_raw,
         weather_forcing_raw,

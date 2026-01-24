@@ -13,7 +13,7 @@ from dagster import (
     MaterializeResult,
     MetadataValue,
 )
-import polars as pl
+import pandas as pd
 
 from orchestration.resources import DuckDBResource
 
@@ -38,13 +38,29 @@ class WeatherConfig(ExtractionConfig):
 
     days_back: int = 7
     incremental_days: int = 2
-    variables: list[str] = ["prcp", "temp", "humidity", "wind_speed", "wind_direction"]
+    variables: list[str] = [
+        "prcp",
+        "temp",
+        "humidity",
+        "wind_speed",
+        "wind_direction",
+        "rsds",  # Shortwave radiation
+        "rlds",  # Longwave radiation
+        "psurf",  # Surface pressure
+        "pet",  # Evapotranspiration
+    ]
 
 
 class SiteConfig(ExtractionConfig):
     """Configuration for site metadata extraction."""
 
     pass
+
+
+class NLDIConfig(ExtractionConfig):
+    """Configuration for NLDI basin characteristics extraction."""
+
+    char_ids: list[str] | None = None  # Specific characteristics to fetch, None for all
 
 
 # Schema for raw data tables
@@ -56,6 +72,7 @@ TBL_GAGES_ATTRS = "gages_basin_attributes"
 TBL_SITE_METADATA = "site_metadata"
 TBL_STREAMFLOW = "streamflow_raw"
 TBL_WEATHER = "weather_forcing"
+TBL_NLDI_ATTRS = "nldi_basin_attributes"
 
 
 def get_high_watermark(
@@ -87,7 +104,7 @@ def get_high_watermark(
 
 def upsert_timeseries(
     duckdb: DuckDBResource,
-    df: pl.DataFrame,
+    df: pd.DataFrame,
     table_name: str,
     key_columns: list[str],
 ) -> int:
@@ -148,13 +165,13 @@ def missouri_basin_sites(
     The Missouri Basin is the largest tributary of the Mississippi River,
     making it a key focus area for flood forecasting.
     """
-    from elt.extraction.gages import get_missouri_basin_sites
+    from elt.extraction.gages import get_sites_in_huc
 
     context.log.info("Fetching Missouri Basin sites from USGS...")
 
-    df = get_missouri_basin_sites()
+    df = get_sites_in_huc("10")  # HUC 10 = Missouri River Basin
 
-    if df.is_empty():
+    if df.empty:
         context.log.warning("No sites returned from USGS")
         return MaterializeResult(
             metadata={"num_sites": 0, "status": "empty"},
@@ -175,9 +192,9 @@ def missouri_basin_sites(
     return MaterializeResult(
         metadata={
             "num_sites": len(df),
-            "columns": MetadataValue.json(df.columns),
+            "columns": MetadataValue.json(list(df.columns)),
             "sample_sites": MetadataValue.json(
-                df.head(5).select("site_id", "station_name").to_dicts()
+                df.head(5)[["site_id", "station_name"]].to_dict("records")
             ),
         },
     )
@@ -204,7 +221,7 @@ def gages_attributes(
 
     df = fetch_gages_attributes()
 
-    if df.is_empty():
+    if df.empty:
         context.log.warning("No GAGES-II attributes returned")
         return MaterializeResult(
             metadata={"num_basins": 0, "status": "empty"},
@@ -226,7 +243,7 @@ def gages_attributes(
         metadata={
             "num_basins": len(df),
             "num_attributes": len(df.columns),
-            "columns": MetadataValue.json(df.columns[:20]),
+            "columns": MetadataValue.json(list(df.columns)[:20]),
         },
     )
 
@@ -273,7 +290,7 @@ def usgs_site_metadata(
 
         try:
             df = get_site_info(batch)
-            if not df.is_empty():
+            if not df.empty:
                 all_metadata.append(df)
         except Exception as e:
             context.log.warning(f"Failed to fetch batch: {e}")
@@ -282,7 +299,7 @@ def usgs_site_metadata(
     if not all_metadata:
         return MaterializeResult(metadata={"num_sites": 0, "status": "fetch_failed"})
 
-    df = pl.concat(all_metadata, how="diagonal")
+    df = pd.concat(all_metadata, ignore_index=True)
 
     # Store in DuckDB (full replace - this is reference data)
     with duckdb.get_connection() as conn:
@@ -298,7 +315,70 @@ def usgs_site_metadata(
         metadata={
             "num_sites": len(df),
             "sample_mode": config.sample_mode,
-            "columns": MetadataValue.json(df.columns),
+            "columns": MetadataValue.json(list(df.columns)),
+        },
+    )
+
+
+@asset(
+    group_name="extraction",
+    description="NLDI basin characteristics for USGS sites (126+ attributes)",
+    compute_kind="python",
+    deps=[usgs_site_metadata],  # Depend on usgs_site_metadata to avoid DuckDB lock conflicts
+)
+def nldi_basin_attributes(
+    context: AssetExecutionContext,
+    config: NLDIConfig,
+    duckdb: DuckDBResource,
+) -> MaterializeResult:
+    """Extract basin characteristics from NLDI for USGS sites.
+
+    NLDI (Network-Linked Data Index) provides 126+ basin characteristics
+    including physical, hydrologic, climatic, and land cover attributes.
+    """
+    from elt.extraction.nldi_attributes import fetch_nldi_characteristics_batch
+
+    # Get site IDs from sites table
+    with duckdb.get_connection() as conn:
+        query = f"SELECT site_id FROM {RAW_SCHEMA}.{TBL_MISSOURI_SITES}"
+        if config.sample_mode:
+            query += f" LIMIT {config.max_sites}"
+        result = conn.execute(query).fetchall()
+
+    if not result:
+        context.log.warning("No sites found in sites table")
+        return MaterializeResult(metadata={"num_sites": 0, "status": "no_sites"})
+
+    site_ids = [row[0] for row in result]
+    context.log.info(f"Fetching NLDI characteristics for {len(site_ids)} sites...")
+
+    df = fetch_nldi_characteristics_batch(
+        site_ids=site_ids,
+        char_ids=config.char_ids
+    )
+
+    if df.empty:
+        context.log.warning("No NLDI characteristics returned")
+        return MaterializeResult(
+            metadata={"num_sites": 0, "status": "empty"},
+        )
+
+    # Store in DuckDB (full replace - this is reference data)
+    with duckdb.get_connection() as conn:
+        conn.execute(f"CREATE SCHEMA IF NOT EXISTS {RAW_SCHEMA}")
+        conn.execute(f"DROP TABLE IF EXISTS {RAW_SCHEMA}.{TBL_NLDI_ATTRS}")
+        conn.execute(
+            f"CREATE TABLE {RAW_SCHEMA}.{TBL_NLDI_ATTRS} AS SELECT * FROM df"
+        )
+
+    context.log.info(f"Stored NLDI characteristics for {len(df)} sites")
+
+    return MaterializeResult(
+        metadata={
+            "num_sites": len(df),
+            "num_characteristics": len(df.columns) - 1,  # Exclude site_id
+            "columns": MetadataValue.json(list(df.columns)[:20]),
+            "sample_mode": config.sample_mode,
         },
     )
 
@@ -307,7 +387,7 @@ def usgs_site_metadata(
     group_name="extraction",
     description="Raw USGS streamflow observations (incremental)",
     compute_kind="python",
-    deps=[usgs_site_metadata],
+    deps=[nldi_basin_attributes],  # Depend on nldi_basin_attributes to avoid DuckDB lock conflicts
 )
 def usgs_streamflow_raw(
     context: AssetExecutionContext,
@@ -374,7 +454,7 @@ def usgs_streamflow_raw(
                 start_date=start_date,
                 end_date=end_date,
             )
-            if not df.is_empty():
+            if not df.empty:
                 all_data.append(df)
         except Exception as e:
             context.log.warning(f"Failed to fetch streamflow batch: {e}")
@@ -383,10 +463,10 @@ def usgs_streamflow_raw(
     if not all_data:
         return MaterializeResult(metadata={"num_records": 0, "status": "fetch_failed"})
 
-    df = pl.concat(all_data, how="diagonal")
+    df = pd.concat(all_data, ignore_index=True)
 
     # Add extraction timestamp
-    df = df.with_columns(pl.lit(datetime.now()).alias("extracted_at"))
+    df["extracted_at"] = datetime.now()
 
     # Upsert to avoid duplicates
     new_records = upsert_timeseries(
@@ -399,7 +479,7 @@ def usgs_streamflow_raw(
         metadata={
             "records_fetched": len(df),
             "records_inserted": new_records,
-            "num_sites": df.n_unique("site_id"),
+            "num_sites": df["site_id"].nunique(),
             "sample_mode": config.sample_mode,
             "is_incremental": watermark is not None,
             "watermark": str(watermark) if watermark else "none",
@@ -502,7 +582,7 @@ def weather_forcing_raw(
             metadata={"num_records": 0, "status": "fetch_failed", "error": str(e)}
         )
 
-    if df.is_empty():
+    if df.empty:
         # Create empty table with expected schema so dbt doesn't fail
         context.log.warning("No weather data fetched, creating empty table")
         with duckdb.get_connection() as conn:
@@ -523,7 +603,7 @@ def weather_forcing_raw(
         return MaterializeResult(metadata={"num_records": 0, "status": "empty"})
 
     # Add extraction timestamp
-    df = df.with_columns(pl.lit(datetime.now()).alias("extracted_at"))
+    df["extracted_at"] = datetime.now()
 
     # Upsert to avoid duplicates
     new_records = upsert_timeseries(
