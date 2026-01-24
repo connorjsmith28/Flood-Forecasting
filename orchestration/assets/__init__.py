@@ -6,6 +6,7 @@ from orchestration.assets.extraction import (
     weather_forcing_raw,
     gages_attributes,
     missouri_basin_sites,
+    nldi_basin_attributes,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "weather_forcing_raw",
     "gages_attributes",
     "missouri_basin_sites",
+    "nldi_basin_attributes",
 ]

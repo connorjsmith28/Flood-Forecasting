@@ -43,6 +43,12 @@ sources:
           - name: gauge_id
             description: Gauge identifier (may vary by source)
 
+      - name: nldi_basin_attributes
+        description: NLDI basin characteristics for USGS sites (126+ attributes)
+        columns:
+          - name: site_id
+            description: USGS site identifier
+
       - name: streamflow_raw
         description: USGS instantaneous streamflow observations (15-minute intervals)
         columns:
@@ -76,5 +82,13 @@ sources:
             description: 10-m wind speed (m/s)
           - name: wind_direction
             description: Wind direction (degrees)
+          - name: rsds
+            description: Shortwave radiation (W/m²)
+          - name: rlds
+            description: Longwave radiation (W/m²)
+          - name: psurf
+            description: Surface pressure (hPa)
+          - name: pet
+            description: Evapotranspiration (mm)
           - name: extracted_at
             description: When the data was extracted
