@@ -17,6 +17,9 @@ This installs:
 - `just` - Command runner
 - `duckdb` - Database CLI with web UI
 
+Note, if you don't have a mac you can't use homebrew or brew bundle. You'll need to manually download uv, just, and duckdb. 
+Once you do that, just and uv will handle the remaining libraries. 
+
 ### Install Python Dependencies
 
 ```bash

@@ -71,3 +71,10 @@ data/
 
 # HTTP cache (aiohttp-client-cache)
 cache/
+
+# Secrets
+secrets
+
+# Weights & Biases
+# These are local log files, they are already synced to cloud so unless you run in offline mode we don't need to track them.
+wandb/

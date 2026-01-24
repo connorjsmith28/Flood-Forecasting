@@ -57,3 +57,15 @@ dbt-build:
 # Generate dbt docs
 dbt-docs:
     uv run dbt docs generate {{dbt_args}} && uv run dbt docs serve {{dbt_args}}
+
+# Run ML experiment (logs to wandb)
+experiment model:
+    uv run python models/{{model}}.py
+
+# Create and run a wandb sweep
+sweep model count="5":
+    #!/usr/bin/env bash
+    output=$(uv run wandb sweep models/{{model}}.yml --project flood-forecasting 2>&1)
+    echo "$output"
+    agent_cmd=$(echo "$output" | grep -oE 'wandb agent [^ ]+')
+    uv run $agent_cmd --count {{count}}
