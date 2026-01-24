@@ -15,8 +15,6 @@ from dagster_dbt import DbtCliResource
 
 from orchestration.resources import DuckDBResource
 from orchestration.assets import (
-    missouri_basin_sites,
-    nldi_basin_attributes,
     usgs_site_metadata,
     usgs_streamflow_raw,
     weather_forcing_raw,
@@ -38,41 +36,22 @@ def get_db_path() -> str:
 os.environ["DUCKDB_PATH"] = get_db_path()
 
 
-# Define asset jobs
+# Define jobs
 extraction_job = define_asset_job(
     name="extraction_job",
-    description="Extract all raw data from USGS and Open-Meteo",
+    description="Extract raw data from USGS and Open-Meteo",
     selection=AssetSelection.groups("extraction"),
-)
-
-site_setup_job = define_asset_job(
-    name="site_setup_job",
-    description="Set up site metadata (run first)",
-    selection=AssetSelection.assets(missouri_basin_sites, nldi_basin_attributes, usgs_site_metadata),
-)
-
-streamflow_update_job = define_asset_job(
-    name="streamflow_update_job",
-    description="Incremental streamflow data update",
-    selection=AssetSelection.assets(usgs_streamflow_raw),
-)
-
-weather_update_job = define_asset_job(
-    name="weather_update_job",
-    description="Incremental weather forcing data update",
-    selection=AssetSelection.assets(weather_forcing_raw),
 )
 
 transformation_job = define_asset_job(
     name="transformation_job",
-    description="Run dbt transformations (staging + marts)",
+    description="Run dbt transformations (seeds + staging + marts)",
     selection=AssetSelection.groups("transformation"),
 )
 
-# Full pipeline: extraction -> transformation
 full_pipeline_job = define_asset_job(
     name="full_pipeline_job",
-    description="Run full ELT pipeline: extract raw data then transform",
+    description="Run full ELT pipeline: extract then transform",
     selection=AssetSelection.groups("extraction", "transformation"),
 )
 
@@ -80,8 +59,6 @@ full_pipeline_job = define_asset_job(
 # Dagster definitions
 defs = Definitions(
     assets=[
-        missouri_basin_sites,
-        nldi_basin_attributes,
         usgs_site_metadata,
         usgs_streamflow_raw,
         weather_forcing_raw,
@@ -89,9 +66,6 @@ defs = Definitions(
     ],
     jobs=[
         extraction_job,
-        site_setup_job,
-        streamflow_update_job,
-        weather_update_job,
         transformation_job,
         full_pipeline_job,
     ],

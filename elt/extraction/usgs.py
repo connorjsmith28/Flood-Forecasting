@@ -10,6 +10,38 @@ import pandas as pd
 from dataretrieval import nwis
 
 
+def get_sites_by_huc(huc_code: str, site_type: str = "ST") -> pd.DataFrame:
+    """Get all USGS sites within a HUC region.
+
+    Args:
+        huc_code: HUC code to filter by (e.g., "10" for Missouri River Basin)
+        site_type: USGS site type code (default "ST" for streams)
+
+    Returns:
+        DataFrame with site_id, station_name, latitude, longitude, huc_code
+    """
+    gdf, _ = nwis.what_sites(huc=huc_code, siteType=site_type)
+
+    if gdf is None or gdf.empty:
+        return pd.DataFrame()
+
+    df = gdf.reset_index(drop=True)
+
+    rename_map = {
+        "site_no": "site_id",
+        "station_nm": "station_name",
+        "dec_lat_va": "latitude",
+        "dec_long_va": "longitude",
+        "huc_cd": "huc_code",
+    }
+
+    cols_to_keep = [k for k in rename_map.keys() if k in df.columns]
+    df = df[cols_to_keep]
+    df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
+
+    return df
+
+
 def fetch_usgs_streamflow(site_ids, start_date, end_date, parameter_code="00060"):
     """Fetch streamflow data from USGS NWIS."""
     if isinstance(start_date, datetime):

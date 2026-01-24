@@ -1,71 +1,100 @@
 # Flood Forecasting
 
-A flood forecasting project using ML models with Polars, PyTorch, and scikit-learn. Data is extracted from USGS, NLDAS, and GAGES-II sources, transformed with dbt, and orchestrated with Dagster.
+ML flood forecasting for the Missouri River Basin (HUC 10). Extracts hydrological and meteorological data from public APIs, transforms it with dbt, and trains models tracked with Weights & Biases.
 
-## Getting Started
+## Quick Start
 
-### Prerequisites
+### 1. Install Prerequisites
 
-Install Homebrew dependencies:
-
+**macOS:**
 ```bash
 brew bundle install
 ```
 
-This installs:
-- `uv` - Python package manager
-- `just` - Command runner
-- `duckdb` - Database CLI with web UI
+**Other platforms:** Install manually:
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) - Python package manager
+- [just](https://github.com/casey/just#installation) - Command runner
+- [duckdb](https://duckdb.org/docs/installation/) - Database CLI
 
-Note, if you don't have a mac you can't use homebrew or brew bundle. You'll need to manually download uv, just, and duckdb. 
-Once you do that, just and uv will handle the remaining libraries. 
-
-### Install Python Dependencies
+### 2. Install Python Dependencies
 
 ```bash
 uv sync
 ```
 
-### Run the Pipeline
+### 3. Build the Database
 
-1. **Extract data** from hydrology APIs:
-   ```bash
-   just extract
-   ```
+Extract data from USGS, Open-Meteo, GAGES-II, and NLDI APIs, then transform with dbt:
 
-2. **Transform data** with dbt:
-   ```bash
-   just transform
-   ```
+```bash
+just extract     # ~3-5 min first run
+just transform   # Build dbt models
+```
 
-### Development
+This creates `flood_forecasting.duckdb` with streamflow observations joined to weather forcing data.
+
+### 4. Run Experiments
+
+Authenticate with Weights & Biases (one-time):
+```bash
+uv run wandb login
+```
+
+Run a model:
+```bash
+just experiment test_model      # Single training run
+just sweep test_model           # Hyperparameter sweep (5 runs)
+just sweep test_model 20        # Sweep with 20 runs
+```
+
+Results are logged to the [flood-forecasting](https://wandb.ai) W&B project.
+
+## Commands
 
 | Command | Description |
 |---------|-------------|
-| `just dagster` | Launch Dagster UI (opens browser) |
-| `just db` | Launch DuckDB UI (read-only) |
-| `just db-write` | Launch DuckDB UI (write access) |
-| `just extract` | Run extraction job |
-| `just extract-fresh` | Clear cache and run extraction |
+| `just extract` | Extract data from APIs |
 | `just transform` | Run dbt build (run + test) |
-| `just lint` | Lint Python and SQL files |
+| `just experiment <model>` | Run single training experiment |
+| `just sweep <model> [n]` | Run hyperparameter sweep |
+| `just dagster` | Launch Dagster UI |
+| `just db` | Launch DuckDB UI (read-only) |
+| `just lint` | Lint Python and SQL |
 | `just dbt-docs` | Generate and serve dbt docs |
 
 ## Project Structure
 
 ```
 elt/
-  extraction/     # Data extraction scripts
-  transformation/ # dbt models
-orchestration/    # Dagster pipelines
-exploratory/      # Notebooks
-models/           # ML model code
+  extraction/           # Python scripts to fetch data from APIs
+  transformation/       # dbt project (staging + marts)
+orchestration/          # Dagster assets and jobs
+models/                 # ML models (training scripts + sweep configs)
+exploratory/            # Notebooks
 ```
+
+## Data Sources
+
+| Source | Data | API |
+|--------|------|-----|
+| USGS NWIS | Streamflow (15-min) + site metadata | dataretrieval |
+| Open-Meteo | Hourly weather forcing | open-meteo.com |
+| GAGES-II | Static watershed attributes | ScienceBase |
+| NLDI | Basin characteristics | pygeohydro |
+
+## Creating New Models
+
+1. Copy `models/test_model.py` and `models/test_model.yml`
+2. Update the model architecture and sweep parameters
+3. Run with `just experiment <name>` or `just sweep <name>`
+
+See [models/README.md](models/README.md) for details.
 
 ## Tech Stack
 
-- **Data Processing**: Polars
+- **Data Processing**: Polars, DuckDB
 - **ML Frameworks**: PyTorch, scikit-learn
+- **Experiment Tracking**: Weights & Biases
 - **Orchestration**: Dagster
-- **Transformation**: dbt + DuckDB
+- **Transformation**: dbt
 - **Linting**: ruff (Python), sqlfluff (SQL)

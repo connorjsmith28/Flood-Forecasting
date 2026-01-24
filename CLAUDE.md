@@ -15,20 +15,21 @@ The original CAMELSH dataset paper can be found: https://www.osti.gov/pages/serv
 |--------|------|--------|
 | USGS NWIS | Streamflow (15-min) + site metadata | site_id |
 | Open-Meteo | Hourly weather forcing (precip, temp, humidity, wind, radiation) | lat/long |
-| GAGES-II | Static watershed attributes | gauge_id |
-| NLDI | 126+ basin characteristics | site_id → ComID |
+| GAGES-II (seeds) | Static watershed attributes | site_id |
+| HydroATLAS (seeds) | 195+ catchment attributes | site_id |
+| NLDAS-2 (seeds) | Climate indices (aridity, precipitation seasonality) | site_id |
 
 ## Project Structure
 ```
 elt/
   extraction/           # Python scripts to fetch data from APIs
-    usgs.py             # USGS streamflow and site info
+    usgs.py             # USGS site discovery, metadata, and streamflow
     weather.py          # Open-Meteo historical weather
-    gages.py            # GAGES-II watershed attributes
-    nldi_attributes.py  # NLDI basin characteristics
   transformation/       # dbt project
+    seeds/              # Static attributes (GAGES-II, HydroATLAS, NLDAS)
     models/staging/     # Clean raw data
     models/marts/       # Business logic (dim_sites, fct_streamflow_hourly)
+    models/final/       # ML-ready tables (flood_model)
 orchestration/          # Dagster assets and jobs
   assets/extraction.py  # Extraction assets with incremental loading
   assets/dbt_assets.py  # dbt integration
@@ -39,19 +40,19 @@ models/                 # ML models (not yet implemented)
 
 ## Database
 - **DuckDB**: `flood_forecasting.duckdb`
-- **Schemas**: `raw` (extracted data), `main` (dbt models)
+- **Schemas**: `raw` (extracted data), `seeds` (dbt seeds), `staging`, `marts`, `final`
 - **Key tables**:
+  - `raw.site_metadata` - Site locations and drainage areas
   - `raw.streamflow_raw` - USGS observations
   - `raw.weather_forcing` - Open-Meteo hourly data
-  - `raw.site_metadata` - Site locations and drainage areas
-  - `marts.fct_streamflow_hourly` - Hourly streamflow joined with weather
+  - `final.flood_model` - ML-ready training data
 
 ## Commands
 | Command | Description |
 |---------|-------------|
-| `just extract` | Run extraction job (USGS, Open-Meteo, GAGES-II, NLDI) |
+| `just extract` | Run extraction job (USGS sites, streamflow, weather) |
 | `just extract-fresh` | Clear HTTP cache and run extraction |
-| `just transform` | Run dbt build (run + test) |
+| `just transform` | Run dbt build (seeds + models + tests) |
 | `just dagster` | Launch Dagster UI (opens browser) |
 | `just db` | Launch DuckDB UI (read-only) |
 | `just db-write` | Launch DuckDB UI (write access) |
@@ -59,12 +60,9 @@ models/                 # ML models (not yet implemented)
 | `just dbt-docs` | Generate and serve dbt documentation |
 
 ## Dagster Jobs
-- `extraction_job` - Run all extraction assets
-- `site_setup_job` - Extract site metadata only
-- `streamflow_update_job` - Incremental streamflow update
-- `weather_update_job` - Incremental weather update
-- `transformation_job` - Run dbt models
-- `full_pipeline_job` - Extract + transform
+- `extraction_job` - Extract raw data from USGS and Open-Meteo
+- `transformation_job` - Run dbt (seeds + staging + marts)
+- `full_pipeline_job` - Extract then transform
 
 ## Tech Stack
 - **Data Processing**: Polars (extraction), DuckDB (storage/analytics)

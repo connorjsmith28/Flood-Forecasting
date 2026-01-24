@@ -21,6 +21,7 @@ dependencies = [
     "pygeohydro>=0.18.0",
     "h5py>=3.10.0",
     "urllib3>=2.6.3",
+    "openmeteo-requests>=1.0.0",
 ]
 
 [project.optional-dependencies]
