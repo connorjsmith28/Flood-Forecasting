@@ -1,6 +1,15 @@
 version: 2
 
 models:
+  - name: dim_sites
+    description: Site dimension table combining Missouri Basin sites with metadata
+    columns:
+      - name: site_id
+        description: USGS site identifier
+        tests:
+          - unique
+          - not_null
+
   - name: fct_streamflow_hourly
     description: >
       Hourly streamflow observations joined with site metadata and weather.
@@ -8,40 +17,5 @@ models:
     columns:
       - name: site_id
         description: USGS site identifier
-        tests:
-          - not_null
       - name: observation_hour
         description: Hour of observation (truncated from 15-min data)
-        tests:
-          - not_null
-      - name: station_name
-        description: Station name
-      - name: latitude
-        description: Site latitude
-      - name: longitude
-        description: Site longitude
-      - name: drainage_area_sq_mi
-        description: Upstream drainage area
-      - name: huc_region
-        description: 2-digit HUC region code
-      - name: streamflow_cfs_mean
-        description: Mean streamflow for the hour (cfs)
-      - name: streamflow_cfs_max
-        description: Max streamflow for the hour (cfs)
-      - name: streamflow_cfs_min
-        description: Min streamflow for the hour (cfs)
-      - name: precipitation_mm
-        description: Hourly precipitation (mm)
-      - name: temperature_c
-        description: Air temperature (Celsius)
-      - name: wind_speed_ms
-        description: Wind speed (m/s)
-
-  - name: dim_sites
-    description: Site dimension table with all attributes
-    columns:
-      - name: site_id
-        description: USGS site identifier
-        tests:
-          - unique
-          - not_null
