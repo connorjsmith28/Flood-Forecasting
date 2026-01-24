@@ -16,7 +16,6 @@ from dagster_dbt import DbtCliResource
 # Import extraction assets for dependency declaration
 from orchestration.assets.extraction import (
     missouri_basin_sites,
-    gages_attributes,
     usgs_site_metadata,
     usgs_streamflow_raw,
     weather_forcing_raw,
@@ -32,7 +31,6 @@ DBT_PROJECT_DIR = Path(__file__).parent.parent.parent / "elt" / "transformation"
     compute_kind="dbt",
     deps=[
         missouri_basin_sites,
-        gages_attributes,
         usgs_site_metadata,
         usgs_streamflow_raw,
         weather_forcing_raw,

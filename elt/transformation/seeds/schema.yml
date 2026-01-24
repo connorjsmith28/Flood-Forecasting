@@ -1,0 +1,143 @@
+version: 2
+
+seeds:
+  - name: attributes_gageii_BasinID
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_Bas_Classif
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_Bas_Morph
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_Bound_QA
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_Climate
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_Climate_Ppt_Annual
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_Climate_Tmp_Annual
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_FlowRec
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_Geology
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_Hydro
+    config:
+      column_types:
+        STAID: varchar
+        REACHCODE: varchar
+
+  - name: attributes_gageii_HydroMod_Dams
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_HydroMod_Other
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_Landscape_Pat
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_LC_Crops
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_LC06_Basin
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_LC06_Mains100
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_LC06_Mains800
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_LC06_Rip100
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_LC06_Rip800
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_Nutrient_App
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_Pest_App
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_Pop_Infrastr
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_Prot_Areas
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_Regions
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_Soils
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_gageii_Topo
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_hydroATLAS
+    config:
+      column_types:
+        STAID: varchar
+
+  - name: attributes_nldas2_climate
+    config:
+      column_types:
+        STAID: varchar

@@ -14,6 +14,10 @@ clean-targets:
   - "target"
   - "dbt_packages"
 
+seeds:
+  flood_forecasting:
+    +schema: seeds
+
 models:
   flood_forecasting:
     staging:
