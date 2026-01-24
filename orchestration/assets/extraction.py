@@ -354,8 +354,7 @@ def nldi_basin_attributes(
 
     df = fetch_nldi_characteristics_batch(
         site_ids=site_ids,
-        char_ids=config.char_ids,
-        batch_size=50,
+        char_ids=config.char_ids
     )
 
     if df.empty:
