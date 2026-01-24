@@ -2,7 +2,7 @@
 -- Joins CAMELS-H static attributes (GAGES-II, HydroATLAS, NLDAS climate)
 
 with sites as (
-    select * from {{ ref('stg_sites_missouri_basin') }}
+    select * from {{ ref('stg_site_metadata') }}
 ),
 
 basin as (

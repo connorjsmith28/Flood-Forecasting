@@ -54,24 +54,16 @@ class WeatherConfig(ExtractionConfig):
 class SiteConfig(ExtractionConfig):
     """Configuration for site metadata extraction."""
 
-    pass
-
-
-class NLDIConfig(ExtractionConfig):
-    """Configuration for NLDI basin characteristics extraction."""
-
-    char_ids: list[str] | None = None  # Specific characteristics to fetch, None for all
+    huc_code: str = "10"  # HUC region to extract (default: Missouri River Basin)
 
 
 # Schema for raw data tables
 RAW_SCHEMA = "raw"
 
 # Table names (different from asset names to avoid DuckDB replacement scan conflicts)
-TBL_MISSOURI_SITES = "sites_missouri_basin"
 TBL_SITE_METADATA = "site_metadata"
 TBL_STREAMFLOW = "streamflow_raw"
 TBL_WEATHER = "weather_forcing"
-TBL_NLDI_ATTRS = "nldi_basin_attributes"
 
 
 def get_high_watermark(
@@ -151,93 +143,45 @@ def upsert_timeseries(
 
 @asset(
     group_name="extraction",
-    description="USGS sites in the Missouri River Basin (HUC 10)",
+    description="USGS site metadata for sites in a HUC region",
     compute_kind="python",
-)
-def missouri_basin_sites(
-    context: AssetExecutionContext,
-    config: SiteConfig,
-    duckdb: DuckDBResource,
-) -> MaterializeResult:
-    """Extract list of USGS sites in the Missouri River Basin.
-
-    The Missouri Basin is the largest tributary of the Mississippi River,
-    making it a key focus area for flood forecasting.
-    """
-    from elt.extraction.gages import get_sites_in_huc
-
-    context.log.info("Fetching Missouri Basin sites from USGS...")
-
-    df = get_sites_in_huc("10")  # HUC 10 = Missouri River Basin
-
-    if df.empty:
-        context.log.warning("No sites returned from USGS")
-        return MaterializeResult(
-            metadata={"num_sites": 0, "status": "empty"},
-        )
-
-    # Always full load - dataset is small (~12k records max)
-
-    # Store in DuckDB (full replace - this is reference data)
-    with duckdb.get_connection() as conn:
-        conn.execute(f"CREATE SCHEMA IF NOT EXISTS {RAW_SCHEMA}")
-        conn.execute(f"DROP TABLE IF EXISTS {RAW_SCHEMA}.{TBL_MISSOURI_SITES}")
-        conn.execute(
-            f"CREATE TABLE {RAW_SCHEMA}.{TBL_MISSOURI_SITES} AS SELECT * FROM df"
-        )
-
-    context.log.info(f"Stored {len(df)} Missouri Basin sites in DuckDB")
-
-    return MaterializeResult(
-        metadata={
-            "num_sites": len(df),
-            "columns": MetadataValue.json(list(df.columns)),
-            "sample_sites": MetadataValue.json(
-                df.head(5)[["site_id", "station_name"]].to_dict("records")
-            ),
-        },
-    )
-
-
-@asset(
-    group_name="extraction",
-    description="USGS site metadata including location and drainage area",
-    compute_kind="python",
-    deps=[missouri_basin_sites],
 )
 def usgs_site_metadata(
     context: AssetExecutionContext,
     config: SiteConfig,
     duckdb: DuckDBResource,
 ) -> MaterializeResult:
-    """Extract detailed metadata for USGS monitoring sites.
+    """Extract USGS site metadata for a HUC region.
 
-    Fetches site information including coordinates, drainage area,
-    and HUC codes for sites in the Missouri Basin.
+    Queries USGS NWIS for all stream sites in the configured HUC region,
+    then fetches detailed metadata (coordinates, drainage area, etc.).
     """
-    from elt.extraction.usgs import get_site_info
+    from elt.extraction.usgs import get_sites_by_huc, get_site_info
 
-    # Get site IDs from sites table
-    with duckdb.get_connection() as conn:
-        query = f"SELECT site_id FROM {RAW_SCHEMA}.{TBL_MISSOURI_SITES}"
-        if config.sample_mode:
-            query += f" LIMIT {config.max_sites}"
-        result = conn.execute(query).fetchall()
+    context.log.info(f"Fetching sites in HUC {config.huc_code}...")
 
-    if not result:
-        context.log.warning("No sites found in sites table")
+    # Get all sites in the HUC region
+    sites_df = get_sites_by_huc(config.huc_code)
+
+    if sites_df.empty:
+        context.log.warning(f"No sites found in HUC {config.huc_code}")
         return MaterializeResult(metadata={"num_sites": 0, "status": "no_sites"})
 
-    site_ids = [row[0] for row in result]
-    context.log.info(f"Fetching metadata for {len(site_ids)} sites...")
+    site_ids = sites_df["site_id"].tolist()
+    context.log.info(f"Found {len(site_ids)} sites in HUC {config.huc_code}")
 
-    # Fetch in batches to avoid API limits
+    # Apply sample mode limit
+    if config.sample_mode:
+        site_ids = site_ids[: config.max_sites]
+        context.log.info(f"Sample mode: limiting to {len(site_ids)} sites")
+
+    # Fetch detailed metadata in batches
     batch_size = 100
     all_metadata = []
 
     for i in range(0, len(site_ids), batch_size):
         batch = site_ids[i : i + batch_size]
-        context.log.info(f"Fetching batch {i // batch_size + 1}...")
+        context.log.info(f"Fetching metadata batch {i // batch_size + 1}...")
 
         try:
             df = get_site_info(batch)
@@ -265,6 +209,7 @@ def usgs_site_metadata(
     return MaterializeResult(
         metadata={
             "num_sites": len(df),
+            "huc_code": config.huc_code,
             "sample_mode": config.sample_mode,
             "columns": MetadataValue.json(list(df.columns)),
         },
@@ -273,72 +218,9 @@ def usgs_site_metadata(
 
 @asset(
     group_name="extraction",
-    description="NLDI basin characteristics for USGS sites (126+ attributes)",
-    compute_kind="python",
-    deps=[usgs_site_metadata],  # Depend on usgs_site_metadata to avoid DuckDB lock conflicts
-)
-def nldi_basin_attributes(
-    context: AssetExecutionContext,
-    config: NLDIConfig,
-    duckdb: DuckDBResource,
-) -> MaterializeResult:
-    """Extract basin characteristics from NLDI for USGS sites.
-
-    NLDI (Network-Linked Data Index) provides 126+ basin characteristics
-    including physical, hydrologic, climatic, and land cover attributes.
-    """
-    from elt.extraction.nldi_attributes import fetch_nldi_characteristics_batch
-
-    # Get site IDs from sites table
-    with duckdb.get_connection() as conn:
-        query = f"SELECT site_id FROM {RAW_SCHEMA}.{TBL_MISSOURI_SITES}"
-        if config.sample_mode:
-            query += f" LIMIT {config.max_sites}"
-        result = conn.execute(query).fetchall()
-
-    if not result:
-        context.log.warning("No sites found in sites table")
-        return MaterializeResult(metadata={"num_sites": 0, "status": "no_sites"})
-
-    site_ids = [row[0] for row in result]
-    context.log.info(f"Fetching NLDI characteristics for {len(site_ids)} sites...")
-
-    df = fetch_nldi_characteristics_batch(
-        site_ids=site_ids,
-        char_ids=config.char_ids
-    )
-
-    if df.empty:
-        context.log.warning("No NLDI characteristics returned")
-        return MaterializeResult(
-            metadata={"num_sites": 0, "status": "empty"},
-        )
-
-    # Store in DuckDB (full replace - this is reference data)
-    with duckdb.get_connection() as conn:
-        conn.execute(f"CREATE SCHEMA IF NOT EXISTS {RAW_SCHEMA}")
-        conn.execute(f"DROP TABLE IF EXISTS {RAW_SCHEMA}.{TBL_NLDI_ATTRS}")
-        conn.execute(
-            f"CREATE TABLE {RAW_SCHEMA}.{TBL_NLDI_ATTRS} AS SELECT * FROM df"
-        )
-
-    context.log.info(f"Stored NLDI characteristics for {len(df)} sites")
-
-    return MaterializeResult(
-        metadata={
-            "num_sites": len(df),
-            "num_characteristics": len(df.columns) - 1,  # Exclude site_id
-            "columns": MetadataValue.json(list(df.columns)[:20]),
-            "sample_mode": config.sample_mode,
-        },
-    )
-
-
-@asset(
-    group_name="extraction",
     description="Raw USGS streamflow observations (incremental)",
     compute_kind="python",
-    deps=[nldi_basin_attributes],  # Depend on nldi_basin_attributes to avoid DuckDB lock conflicts
+    deps=[usgs_site_metadata],  # Depend on site metadata for site list
 )
 def usgs_streamflow_raw(
     context: AssetExecutionContext,

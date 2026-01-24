@@ -1,15 +1,6 @@
 version: 2
 
 models:
-  - name: stg_sites_missouri_basin
-    description: USGS monitoring sites in the Missouri River Basin
-    columns:
-      - name: site_id
-        description: USGS site identifier
-        tests:
-          - unique
-          - not_null
-
   - name: stg_site_metadata
     description: Detailed USGS site metadata including drainage area
     columns:

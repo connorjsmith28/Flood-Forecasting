@@ -5,22 +5,6 @@ sources:
     description: Raw data extracted from hydrology APIs via Dagster
     schema: raw
     tables:
-      - name: sites_missouri_basin
-        description: USGS monitoring sites in the Missouri River Basin (HUC 10)
-        columns:
-          - name: site_id
-            description: USGS site identifier
-          - name: station_name
-            description: Station name
-          - name: latitude
-            description: Decimal latitude
-          - name: longitude
-            description: Decimal longitude
-          - name: huc_code
-            description: Hydrologic Unit Code
-          - name: altitude
-            description: Site altitude in feet
-
       - name: site_metadata
         description: Detailed USGS site metadata including drainage area
         columns:
@@ -36,18 +20,6 @@ sources:
             description: Drainage area in square miles
           - name: huc_code
             description: Hydrologic Unit Code
-
-      - name: gages_basin_attributes
-        description: GAGES-II/CAMELS watershed characteristics
-        columns:
-          - name: gauge_id
-            description: Gauge identifier (may vary by source)
-
-      - name: nldi_basin_attributes
-        description: NLDI basin characteristics for USGS sites (126+ attributes)
-        columns:
-          - name: site_id
-            description: USGS site identifier
 
       - name: streamflow_raw
         description: USGS instantaneous streamflow observations (15-minute intervals)
