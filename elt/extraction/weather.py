@@ -25,6 +25,35 @@ OPENMETEO_VARIABLES = {
 }
 
 
+def _parse_response(response, longitude, latitude, variables):
+    """Parse Open-Meteo response into a pandas DataFrame."""
+    hourly = response.Hourly()
+    if hourly is None:
+        return pd.DataFrame()
+
+    # Build datetime range from response metadata
+    datetime_range = pd.date_range(
+        start=pd.to_datetime(hourly.Time(), unit="s", utc=True),
+        end=pd.to_datetime(hourly.TimeEnd(), unit="s", utc=True),
+        freq=pd.Timedelta(seconds=hourly.Interval()),
+        inclusive="left",
+    )
+
+    data = {
+        "longitude": longitude,
+        "latitude": latitude,
+        "datetime": datetime_range,
+    }
+
+    # Add each variable, mapping back to our names
+    for i, var in enumerate(variables):
+        values = hourly.Variables(i)
+        if values is not None:
+            data[var] = values.ValuesAsNumpy()
+
+    return pd.DataFrame(data)
+
+
 def fetch_weather_forcing(coordinates, start_date, end_date, variables=None):
     """Fetch hourly weather forcing data from Open-Meteo.
 
@@ -76,32 +105,3 @@ def fetch_weather_forcing(coordinates, start_date, end_date, variables=None):
     if not all_dfs:
         return pd.DataFrame()
     return pd.concat(all_dfs, ignore_index=True)
-
-
-def _parse_response(response, longitude, latitude, variables):
-    """Parse Open-Meteo response into a pandas DataFrame."""
-    hourly = response.Hourly()
-    if hourly is None:
-        return pd.DataFrame()
-
-    # Build datetime range from response metadata
-    datetime_range = pd.date_range(
-        start=pd.to_datetime(hourly.Time(), unit="s", utc=True),
-        end=pd.to_datetime(hourly.TimeEnd(), unit="s", utc=True),
-        freq=pd.Timedelta(seconds=hourly.Interval()),
-        inclusive="left",
-    )
-
-    data = {
-        "longitude": longitude,
-        "latitude": latitude,
-        "datetime": datetime_range,
-    }
-
-    # Add each variable, mapping back to our names
-    for i, var in enumerate(variables):
-        values = hourly.Variables(i)
-        if values is not None:
-            data[var] = values.ValuesAsNumpy()
-
-    return pd.DataFrame(data)
