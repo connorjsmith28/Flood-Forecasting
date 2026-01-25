@@ -23,6 +23,8 @@ models:
           - not_null
       - name: streamflow_cfs
         description: Discharge in cubic feet per second
+      - name: gage_height_ft
+        description: Water level (gage height) in feet above datum
       - name: qualifiers
         description: Data quality flags
       - name: extracted_at

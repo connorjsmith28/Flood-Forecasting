@@ -19,3 +19,15 @@ models:
         description: USGS site identifier
       - name: observation_hour
         description: Hour of observation (truncated from 15-min data)
+      - name: streamflow_cfs_mean
+        description: Mean discharge (cfs) for the hour
+      - name: streamflow_cfs_max
+        description: Maximum discharge (cfs) for the hour
+      - name: streamflow_cfs_min
+        description: Minimum discharge (cfs) for the hour
+      - name: gage_height_ft_mean
+        description: Mean water level (ft) for the hour
+      - name: gage_height_ft_max
+        description: Maximum water level (ft) for the hour
+      - name: gage_height_ft_min
+        description: Minimum water level (ft) for the hour

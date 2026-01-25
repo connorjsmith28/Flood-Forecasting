@@ -13,6 +13,18 @@ select
     ) as streamflow_cfs_target_1h,
     streamflow.streamflow_cfs_max,
     streamflow.streamflow_cfs_min,
+
+    -- Gage height (water level)
+    streamflow.gage_height_ft_mean,
+    streamflow.gage_height_ft_max,
+    streamflow.gage_height_ft_min,
+
+    -- Target: 1-hour ahead gage height
+    lead(streamflow.gage_height_ft_mean, 1) over (
+        partition by streamflow.site_id
+        order by streamflow.observation_hour
+    ) as gage_height_ft_target_1h,
+
     streamflow.observation_count,
 
     -- Weather data (Mateo weather extractor)
