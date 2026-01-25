@@ -9,6 +9,10 @@ from datetime import datetime
 import openmeteo_requests
 import pandas as pd
 
+# Request configuration
+REQUEST_TIMEOUT = 120  # seconds
+BATCH_SIZE = 25  # max coordinates per request to avoid timeouts
+
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 
 # Variable mapping: our name -> Open-Meteo name
@@ -54,6 +58,32 @@ def _parse_response(response, longitude, latitude, variables):
     return pd.DataFrame(data)
 
 
+def _fetch_batch(client, coordinates, start_date, end_date, hourly_vars, variables):
+    """Fetch weather data for a batch of coordinates."""
+    lons = [coord[0] for coord in coordinates]
+    lats = [coord[1] for coord in coordinates]
+
+    params = {
+        "latitude": lats,
+        "longitude": lons,
+        "start_date": start_date,
+        "end_date": end_date,
+        "hourly": hourly_vars,
+        "timezone": "UTC",
+        "wind_speed_unit": "ms",
+    }
+
+    responses = client.weather_api(ARCHIVE_URL, params=params, timeout=REQUEST_TIMEOUT)
+
+    batch_dfs = []
+    for i, response in enumerate(responses):
+        df = _parse_response(response, lons[i], lats[i], variables)
+        if not df.empty:
+            batch_dfs.append(df)
+
+    return batch_dfs
+
+
 def fetch_weather_forcing(coordinates, start_date, end_date, variables=None):
     """Fetch hourly weather forcing data from Open-Meteo.
 
@@ -85,30 +115,21 @@ def fetch_weather_forcing(coordinates, start_date, end_date, variables=None):
     else:
         end_date = end_date[:10]
 
-    lons = [coord[0] for coord in coordinates]
-    lats = [coord[1] for coord in coordinates]
-
     # Map variable names to Open-Meteo names
     hourly_vars = [OPENMETEO_VARIABLES.get(v, v) for v in variables]
 
-    params = {
-        "latitude": lats,
-        "longitude": lons,
-        "start_date": start_date,
-        "end_date": end_date,
-        "hourly": hourly_vars,
-        "timezone": "UTC",
-        "wind_speed_unit": "ms",
-    }
-
     client = openmeteo_requests.Client()
-    responses = client.weather_api(ARCHIVE_URL, params=params)
 
     all_dfs = []
-    for i, response in enumerate(responses):
-        df = _parse_response(response, lons[i], lats[i], variables)
-        if not df.empty:
-            all_dfs.append(df)
+
+    # Process in batches to avoid timeouts on large requests
+    for i in range(0, len(coordinates), BATCH_SIZE):
+        batch_coords = coordinates[i : i + BATCH_SIZE]
+
+        batch_dfs = _fetch_batch(
+            client, batch_coords, start_date, end_date, hourly_vars, variables
+        )
+        all_dfs.extend(batch_dfs)
 
     if not all_dfs:
         return pd.DataFrame()
