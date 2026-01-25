@@ -22,12 +22,9 @@ dependencies = [
     "h5py>=3.10.0",
     "urllib3>=2.6.3",
     "openmeteo-requests>=1.0.0",
-]
-
-[project.optional-dependencies]
-dev = [
     "ruff",
-    "pytest",
+    "sqlfluff",
+    "sqlfluff-templater-dbt",
 ]
 
 [build-system]

@@ -1,9 +1,9 @@
 -- GAGES-II geology attributes
 select
-    STAID as site_id,
-    GEOL_REEDBUSH_DOM as geology_class_reedbush,
-    GEOL_REEDBUSH_DOM_PCT as geology_pct_reedbush,
-    GEOL_HUNT_DOM_CODE as geology_code_hunt,
-    GEOL_HUNT_DOM_PCT as geology_pct_hunt,
-    GEOL_HUNT_DOM_DESC as geology_desc_hunt
+    STAID as SITE_ID,
+    GEOL_REEDBUSH_DOM as GEOLOGY_CLASS_REEDBUSH,
+    GEOL_REEDBUSH_DOM_PCT as GEOLOGY_PCT_REEDBUSH,
+    GEOL_HUNT_DOM_CODE as GEOLOGY_CODE_HUNT,
+    GEOL_HUNT_DOM_PCT as GEOLOGY_PCT_HUNT,
+    GEOL_HUNT_DOM_DESC as GEOLOGY_DESC_HUNT
 from {{ ref('attributes_gageii_Geology') }}

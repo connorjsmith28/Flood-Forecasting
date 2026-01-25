@@ -7,35 +7,27 @@ select
     streamflow.streamflow_cfs_mean,
 
     -- Target: 1-hour ahead streamflow (what we're predicting)
-    lead(streamflow.streamflow_cfs_mean, 1) over (
-        partition by streamflow.site_id
-        order by streamflow.observation_hour
-    ) as streamflow_cfs_target_1h,
     streamflow.streamflow_cfs_max,
     streamflow.streamflow_cfs_min,
+    streamflow.gage_height_ft_mean,
 
     -- Gage height (water level)
-    streamflow.gage_height_ft_mean,
     streamflow.gage_height_ft_max,
     streamflow.gage_height_ft_min,
-
-    -- Target: 1-hour ahead gage height
-    lead(streamflow.gage_height_ft_mean, 1) over (
-        partition by streamflow.site_id
-        order by streamflow.observation_hour
-    ) as gage_height_ft_target_1h,
-
     streamflow.observation_count,
 
-    -- Weather data (Mateo weather extractor)
+    -- Target: 1-hour ahead gage height
     weather.precipitation_mm,
+
     weather.temperature_c,
+
+    -- Weather data (Mateo weather extractor)
     weather.wind_speed_ms,
     weather.humidity_pct,
-
-    -- Site attributes (CAMELSH static attributes via dbt seeds)
     attributes.station_name,
     attributes.huc_code,
+
+    -- Site attributes (CAMELSH static attributes via dbt seeds)
     attributes.drainage_area_sq_km,
     attributes.is_reference_hcdn2009,
     attributes.elev_mean_m,
@@ -63,11 +55,20 @@ select
     attributes.hydroatlas_sand_pct,
     attributes.hydroatlas_forest_pct,
     attributes.hydroatlas_crop_pct,
-    attributes.hydroatlas_urban_pct  
-from {{ ref('fct_streamflow_hourly') }} streamflow  
-inner join {{ ref('dim_catchment_attributes') }} attributes 
+    attributes.hydroatlas_urban_pct,
+    lead(streamflow.streamflow_cfs_mean, 1) over (
+        partition by streamflow.site_id
+        order by streamflow.observation_hour
+    ) as streamflow_cfs_target_1h,
+    lead(streamflow.gage_height_ft_mean, 1) over (
+        partition by streamflow.site_id
+        order by streamflow.observation_hour
+    ) as gage_height_ft_target_1h
+from {{ ref('fct_streamflow_hourly') }} as streamflow
+inner join {{ ref('dim_catchment_attributes') }} as attributes
     on streamflow.site_id = attributes.site_id
-inner join {{ ref('stg_weather') }} weather
-    on attributes.longitude = weather.longitude
-    and attributes.latitude = weather.latitude
-    and streamflow.observation_hour = weather.observed_at
+inner join {{ ref('stg_weather') }} as weather
+    on
+        attributes.longitude = weather.longitude
+        and attributes.latitude = weather.latitude
+        and streamflow.observation_hour = weather.observed_at

@@ -1,10 +1,8 @@
-# Run full pipeline setup (extract + transform)
-setup: extract transform
-
-# Lint all code
+# Format and lint all code
 lint:
-    ruff check .
-    sqlfluff lint elt/transformation/
+    uv run ruff format .
+    uv run ruff check --fix .
+    uv run sqlfluff fix elt/transformation/
 
 # Launch Dagster UI
 dagster:
@@ -27,6 +25,21 @@ extract-fresh:
     rm -rf cache/
     uv run dagster job execute -m orchestration.definitions -j extraction_job
 
+# Run extraction with full refresh (drops and recreates tables)
+# Usage: just extract-refresh local  OR  just extract-refresh prod
+extract-refresh env:
+    #!/usr/bin/env bash
+    if [ "{{env}}" = "local" ]; then
+        uv run dagster job execute -m orchestration.definitions -j extraction_job \
+            --config <(echo 'resources: {duckdb: {config: {full_refresh: true}}}')
+    elif [ "{{env}}" = "prod" ]; then
+        uv run dagster job execute -m orchestration.definitions -j extraction_job \
+            --config <(echo 'resources: {duckdb: {config: {full_refresh: true, is_production: true}}}')
+    else
+        echo "Usage: just extract-refresh [local|prod]"
+        exit 1
+    fi
+
 # dbt project paths
 dbt_project := "elt/transformation"
 dbt_args := "--project-dir " + dbt_project + " --profiles-dir " + dbt_project
@@ -41,22 +54,6 @@ transform:
 # Parse dbt project and generate manifest (required before running Dagster with dbt)
 dbt-parse:
     uv run dbt parse {{dbt_args}}
-
-# Run dbt models
-dbt-run:
-    uv run dbt run {{dbt_args}}
-
-# Test dbt models
-dbt-test:
-    uv run dbt test {{dbt_args}}
-
-# Build dbt (run + test)
-dbt-build:
-    uv run dbt build {{dbt_args}}
-
-# Generate dbt docs
-dbt-docs:
-    uv run dbt docs generate {{dbt_args}} && uv run dbt docs serve {{dbt_args}}
 
 # Run ML experiment (logs to wandb)
 experiment model:

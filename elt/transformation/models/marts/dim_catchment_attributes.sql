@@ -83,10 +83,10 @@ select
     h.crp_pc_use as hydroatlas_crop_pct,
     h.urb_pc_use as hydroatlas_urban_pct
 
-from sites s
-left join basin b on s.site_id = b.site_id
-left join topo t on s.site_id = t.site_id
-left join soils so on s.site_id = so.site_id
-left join geology g on s.site_id = g.site_id
-left join climate c on s.site_id = c.site_id
-left join hydroatlas h on s.site_id = h.site_id
+from sites as s
+left join basin as b on s.site_id = b.site_id
+left join topo as t on s.site_id = t.site_id
+left join soils as so on s.site_id = so.site_id
+left join geology as g on s.site_id = g.site_id
+left join climate as c on s.site_id = c.site_id
+left join hydroatlas as h on s.site_id = h.site_id

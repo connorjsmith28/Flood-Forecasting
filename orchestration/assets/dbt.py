@@ -1,4 +1,4 @@
-"""dbt assets for flood forecasting transformations.
+"""dbt asset for flood forecasting transformations.
 
 Integrates dbt models with Dagster for orchestration.
 """
@@ -13,12 +13,9 @@ from dagster import (
 )
 from dagster_dbt import DbtCliResource
 
-# Import extraction assets for dependency declaration
-from orchestration.assets.extraction import (
-    usgs_site_metadata,
-    usgs_streamflow_raw,
-    weather_forcing_raw,
-)
+from orchestration.assets.usgs_sites import usgs_site_metadata
+from orchestration.assets.usgs_streamflow import usgs_streamflow_raw
+from orchestration.assets.weather import weather_forcing_raw
 
 # Path to dbt project
 DBT_PROJECT_DIR = Path(__file__).parent.parent.parent / "elt" / "transformation"
