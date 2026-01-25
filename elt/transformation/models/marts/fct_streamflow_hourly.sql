@@ -5,7 +5,8 @@ with streamflow as (
     select
         site_id,
         observed_at,
-        streamflow_cfs
+        streamflow_cfs,
+        gage_height_ft
     from {{ ref('stg_streamflow') }}
 ),
 
@@ -36,6 +37,9 @@ streamflow_hourly as (
         avg(streamflow_cfs) as streamflow_cfs_mean,
         max(streamflow_cfs) as streamflow_cfs_max,
         min(streamflow_cfs) as streamflow_cfs_min,
+        avg(gage_height_ft) as gage_height_ft_mean,
+        max(gage_height_ft) as gage_height_ft_max,
+        min(gage_height_ft) as gage_height_ft_min,
         count(*) as observation_count
     from streamflow
     group by site_id, date_trunc('hour', observed_at)
@@ -51,6 +55,9 @@ streamflow_with_coords as (
         sf.streamflow_cfs_mean,
         sf.streamflow_cfs_max,
         sf.streamflow_cfs_min,
+        sf.gage_height_ft_mean,
+        sf.gage_height_ft_max,
+        sf.gage_height_ft_min,
         sf.observation_count
     from streamflow_hourly sf
     inner join sites s on sf.site_id = s.site_id
@@ -65,6 +72,9 @@ final as (
         sws.streamflow_cfs_mean,
         sws.streamflow_cfs_max,
         sws.streamflow_cfs_min,
+        sws.gage_height_ft_mean,
+        sws.gage_height_ft_max,
+        sws.gage_height_ft_min,
         sws.observation_count,
         w.precipitation_mm,
         w.temperature_c,
@@ -85,6 +95,9 @@ select
     streamflow_cfs_mean,
     streamflow_cfs_max,
     streamflow_cfs_min,
+    gage_height_ft_mean,
+    gage_height_ft_max,
+    gage_height_ft_min,
     observation_count,
     precipitation_mm,
     temperature_c,
