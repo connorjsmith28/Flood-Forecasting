@@ -1,0 +1,61 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  pipeline-test:
+    name: Run Extract & Transform
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install just
+        uses: extractions/setup-just@v2
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run extraction
+        run: just extract
+        env:
+          DUCKDB_PATH: ${{ github.workspace }}/flood_forecasting.duckdb
+
+      - name: Run transformation
+        run: just transform
+        env:
+          DUCKDB_PATH: ${{ github.workspace }}/flood_forecasting.duckdb
+
+  auto-approve:
+    name: Auto-approve on Success
+    runs-on: ubuntu-latest
+    needs: pipeline-test
+    if: success()
+
+    steps:
+      - name: Approve PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              event: 'APPROVE',
+              body: 'Pipeline validation passed. Auto-approved by CI.'
+            });
