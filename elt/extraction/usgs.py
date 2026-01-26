@@ -4,12 +4,43 @@ Uses the dataretrieval package to fetch streamflow data from USGS Water Services
 https://waterservices.usgs.gov/
 """
 
+import time
 from datetime import datetime
+from functools import wraps
 
 import pandas as pd
 from dataretrieval import nwis
 
 
+def retry_on_network_error(max_retries: int = 3, base_delay: float = 2.0):
+    """Decorator to retry functions on network/SSL errors with exponential backoff."""
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    error_str = str(e).lower()
+                    is_retryable = any(
+                        term in error_str
+                        for term in ["ssl", "connection", "timeout", "max retries"]
+                    )
+                    if not is_retryable or attempt == max_retries - 1:
+                        raise
+                    last_exception = e
+                    delay = base_delay * (2**attempt)
+                    time.sleep(delay)
+            raise last_exception
+
+        return wrapper
+
+    return decorator
+
+
+@retry_on_network_error(max_retries=3, base_delay=2.0)
 def get_sites_by_huc(huc_code: str, site_type: str = "ST") -> pd.DataFrame:
     """Get all USGS sites within a HUC region.
 
@@ -47,6 +78,7 @@ PARAM_STREAMFLOW = "00060"  # Discharge (cfs)
 PARAM_GAGE_HEIGHT = "00065"  # Gage height (ft)
 
 
+@retry_on_network_error(max_retries=3, base_delay=2.0)
 def fetch_usgs_streamflow(
     site_ids, start_date, end_date, parameter_codes=None, include_gage_height=True
 ):
@@ -126,6 +158,7 @@ def fetch_usgs_streamflow(
     return df[output_cols]
 
 
+@retry_on_network_error(max_retries=3, base_delay=2.0)
 def get_site_info(site_ids):
     """Get metadata for USGS sites."""
     gdf, _ = nwis.get_info(sites=list(site_ids))

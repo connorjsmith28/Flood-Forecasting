@@ -33,14 +33,17 @@ def usgs_site_metadata(
     """
     from elt.extraction.usgs import get_sites_by_huc, get_site_info
 
+    # Ensure schema exists
+    with duckdb.get_connection() as conn:
+        conn.execute(f"CREATE SCHEMA IF NOT EXISTS {RAW_SCHEMA}")
+
     context.log.info(f"Fetching sites in HUC {config.huc_code}...")
 
     # Get all sites in the HUC region
     sites_df = get_sites_by_huc(config.huc_code)
 
     if sites_df.empty:
-        context.log.warning(f"No sites found in HUC {config.huc_code}")
-        return MaterializeResult(metadata={"num_sites": 0, "status": "no_sites"})
+        raise RuntimeError(f"No sites found in HUC {config.huc_code}")
 
     site_ids = sites_df["site_id"].tolist()
     context.log.info(f"Found {len(site_ids)} sites in HUC {config.huc_code}")
@@ -67,13 +70,14 @@ def usgs_site_metadata(
             continue
 
     if not all_metadata:
-        return MaterializeResult(metadata={"num_sites": 0, "status": "fetch_failed"})
+        raise RuntimeError(
+            f"Failed to fetch metadata for any sites in HUC {config.huc_code}"
+        )
 
     df = pd.concat(all_metadata, ignore_index=True)
 
     # Store in DuckDB (full replace - this is reference data)
     with duckdb.get_connection() as conn:
-        conn.execute(f"CREATE SCHEMA IF NOT EXISTS {RAW_SCHEMA}")
         conn.execute(f"DROP TABLE IF EXISTS {RAW_SCHEMA}.{TBL_SITE_METADATA}")
         conn.execute(
             f"CREATE TABLE {RAW_SCHEMA}.{TBL_SITE_METADATA} AS SELECT * FROM df"
