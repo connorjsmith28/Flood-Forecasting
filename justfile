@@ -1,10 +1,11 @@
 # Run full pipeline setup (extract + transform)
 setup: extract transform
 
-# Lint all code
+# Format and fix all code
 lint:
-    ruff check .
-    sqlfluff lint elt/transformation/
+    uv run ruff check --fix .
+    uv run ruff format .
+    uv run sqlfluff fix elt/transformation/
 
 # Launch Dagster UI
 dagster:

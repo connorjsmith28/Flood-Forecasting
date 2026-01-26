@@ -1,6 +1,6 @@
 -- NLDAS-2 derived climate attributes (CAMELS-style indices)
 select
-    STAID as site_id,
+    staid as site_id,
     p_mean,
     pet_mean,
     aridity_index,

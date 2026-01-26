@@ -54,9 +54,7 @@ def upsert_timeseries(
 
         if not duckdb.table_exists(table_name, RAW_SCHEMA):
             # Create table from DataFrame
-            conn.execute(
-                f"CREATE TABLE {RAW_SCHEMA}.{table_name} AS SELECT * FROM df"
-            )
+            conn.execute(f"CREATE TABLE {RAW_SCHEMA}.{table_name} AS SELECT * FROM df")
             return len(df)
 
         # Get count before insert
@@ -65,9 +63,7 @@ def upsert_timeseries(
         ).fetchone()[0]
 
         # Insert only records that don't already exist (based on key columns)
-        key_conditions = " AND ".join(
-            f"t.{col} = df.{col}" for col in key_columns
-        )
+        key_conditions = " AND ".join(f"t.{col} = df.{col}" for col in key_columns)
 
         conn.execute(f"""
             INSERT INTO {RAW_SCHEMA}.{table_name}

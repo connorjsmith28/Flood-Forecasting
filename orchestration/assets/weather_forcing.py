@@ -23,7 +23,9 @@ TBL_WEATHER = "weather_forcing"
     group_name="extraction",
     description="Raw meteorological forcing data from Open-Meteo (incremental)",
     compute_kind="python",
-    deps=["usgs_streamflow_raw"],  # Depend on streamflow to avoid DuckDB write lock conflicts
+    deps=[
+        "usgs_streamflow_raw"
+    ],  # Depend on streamflow to avoid DuckDB write lock conflicts
 )
 def weather_forcing_raw(
     context: AssetExecutionContext,
@@ -55,7 +57,9 @@ def weather_forcing_raw(
 
     if not result:
         context.log.warning("No sites with coordinates found")
-        return MaterializeResult(metadata={"num_records": 0, "status": "no_coordinates"})
+        return MaterializeResult(
+            metadata={"num_records": 0, "status": "no_coordinates"}
+        )
 
     coordinates = [(row[1], row[2]) for row in result]
 
