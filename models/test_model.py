@@ -26,7 +26,7 @@ config = wandb.config
 # Load data
 con = duckdb.connect(DB_PATH, read_only=True)
 df = con.execute(f"""
-    SELECT {TARGET}, {', '.join(FEATURES)}
+    SELECT {TARGET}, {", ".join(FEATURES)}
     FROM main_marts.fct_streamflow_hourly
     WHERE {TARGET} IS NOT NULL
       AND precipitation_mm IS NOT NULL
@@ -35,7 +35,9 @@ con.close()
 
 X = df[FEATURES]
 y = df[TARGET]
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42
+)
 
 # Train (params from config, overridden by sweep if running)
 model = RandomForestRegressor(
@@ -48,8 +50,10 @@ model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
 
 # Log metrics
-wandb.log({
-    "mae": mean_absolute_error(y_test, y_pred),
-    "r2": r2_score(y_test, y_pred),
-})
+wandb.log(
+    {
+        "mae": mean_absolute_error(y_test, y_pred),
+        "r2": r2_score(y_test, y_pred),
+    }
+)
 wandb.finish()

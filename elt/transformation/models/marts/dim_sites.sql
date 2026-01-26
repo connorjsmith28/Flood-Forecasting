@@ -8,5 +8,6 @@ select
     drainage_area_sq_mi,
     huc_code
 from {{ ref('stg_site_metadata') }}
-where latitude is not null
-  and longitude is not null
+where
+    latitude is not null
+    and longitude is not null

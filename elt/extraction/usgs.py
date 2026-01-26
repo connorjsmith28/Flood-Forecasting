@@ -83,7 +83,13 @@ def fetch_usgs_streamflow(
         end=end_date,
     )
 
-    output_cols = ["site_id", "datetime", "streamflow_cfs", "gage_height_ft", "qualifiers"]
+    output_cols = [
+        "site_id",
+        "datetime",
+        "streamflow_cfs",
+        "gage_height_ft",
+        "qualifiers",
+    ]
 
     if df.empty:
         return pd.DataFrame(columns=output_cols)
@@ -143,8 +149,15 @@ def get_site_info(site_ids):
 
     # Select key columns if they exist
     key_columns = [
-        "site_no", "station_nm", "dec_lat_va", "dec_long_va",
-        "drain_area_va", "huc_cd", "state_cd", "county_cd", "geometry_wkt",
+        "site_no",
+        "station_nm",
+        "dec_lat_va",
+        "dec_long_va",
+        "drain_area_va",
+        "huc_cd",
+        "state_cd",
+        "county_cd",
+        "geometry_wkt",
     ]
     df = df[[c for c in key_columns if c in df.columns]]
 

@@ -59,8 +59,8 @@ streamflow_with_coords as (
         sf.gage_height_ft_max,
         sf.gage_height_ft_min,
         sf.observation_count
-    from streamflow_hourly sf
-    inner join sites s on sf.site_id = s.site_id
+    from streamflow_hourly as sf
+    inner join sites as s on sf.site_id = s.site_id
 ),
 
 final as (
@@ -80,11 +80,12 @@ final as (
         w.temperature_c,
         w.wind_speed_ms,
         w.humidity_pct
-    from streamflow_with_coords sws
-    left join weather w
-        on round(sws.longitude, 2) = round(w.longitude, 2)
-        and round(sws.latitude, 2) = round(w.latitude, 2)
-        and sws.observation_hour = w.observed_at
+    from streamflow_with_coords as sws
+    left join weather as w
+        on
+            round(sws.longitude, 2) = round(w.longitude, 2)
+            and round(sws.latitude, 2) = round(w.latitude, 2)
+            and sws.observation_hour = w.observed_at
 )
 
 select

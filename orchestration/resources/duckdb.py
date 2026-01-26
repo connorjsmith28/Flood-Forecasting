@@ -31,7 +31,9 @@ class DuckDBResource(ConfigurableResource):
             else:
                 conn.execute(query)
 
-    def query(self, query: str, parameters: list | None = None) -> duckdb.DuckDBPyRelation:
+    def query(
+        self, query: str, parameters: list | None = None
+    ) -> duckdb.DuckDBPyRelation:
         """Execute a query and return results as a DuckDB relation."""
         conn = self.get_connection()
         if parameters:
