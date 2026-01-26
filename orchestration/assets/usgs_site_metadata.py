@@ -15,7 +15,7 @@ from orchestration.resources import DuckDBResource
 RAW_SCHEMA = "raw"
 TBL_SITE_METADATA = "site_metadata"
 
-INTENTIONALLY BERAKING CHANGE
+# INTENTIONALLY BERAKING CHANGE
 
 @asset(
     group_name="extraction",
