@@ -14,7 +14,7 @@ lint:
 
 # Launch Dagster UI
 dagster:
-    python -c "import threading, webbrowser, time; threading.Timer(3, lambda: webbrowser.open('http://localhost:3000')).start()"
+    uv run python -c "import threading, webbrowser, time; threading.Timer(3, lambda: webbrowser.open('http://localhost:3000')).start()"
     uv run dagster dev -m orchestration.definitions
 
 # Launch DuckDB UI (opens in browser, read-only to allow concurrent Dagster runs)
@@ -31,7 +31,7 @@ extract:
 
 # Run full extraction job with fresh data (clears HTTP cache first)
 extract-fresh:
-    python -c "import shutil; shutil.rmtree('cache', ignore_errors=True)"
+    uv run python -c "import shutil; shutil.rmtree('cache', ignore_errors=True)"
     uv run dagster job execute -m orchestration.definitions -j extraction_job
 
 # dbt project paths
@@ -72,4 +72,4 @@ experiment model:
 
 # Create and run a wandb sweep
 sweep model count="5":
-    python -c "import subprocess, re, sys; output = subprocess.run(['uv', 'run', 'wandb', 'sweep', 'models/{{model}}.yml', '--project', 'flood-forecasting'], capture_output=True, text=True); print(output.stdout, end=''); print(output.stderr, end='', file=sys.stderr); match = re.search(r'wandb agent [^\s]+', output.stdout + output.stderr); agent_cmd = match.group(0) if match else None; sys.exit(1) if not agent_cmd else subprocess.run(['uv', 'run'] + agent_cmd.split()[2:] + ['--count', '{{count}}'])"
+    uv run python -c "import subprocess, re, sys; output = subprocess.run(['uv', 'run', 'wandb', 'sweep', 'models/{{model}}.yml', '--project', 'flood-forecasting'], capture_output=True, text=True); print(output.stdout, end=''); print(output.stderr, end='', file=sys.stderr); match = re.search(r'wandb agent ([^\s]+)', output.stdout + output.stderr); sweep_id = match.group(1) if match else None; sys.exit(1) if not sweep_id else subprocess.run(['uv', 'run', 'wandb', 'agent', sweep_id, '--count', '{{count}}'])"
