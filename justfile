@@ -1,3 +1,11 @@
+# Shell configuration: Auto-detect based on OS
+# On Windows, PowerShell is used; on macOS/Linux, sh is used
+# This uses just's os() function to conditionally set the shell
+set shell := ["sh", "-c"]
+
+# Windows users: Uncomment the line below and comment out the line above
+# set shell := ["powershell.exe", "-c"]
+
 # Run full pipeline setup (extract + transform)
 setup: extract transform
 
@@ -9,7 +17,8 @@ lint:
 
 # Launch Dagster UI
 dagster:
-    (sleep 3 && open http://localhost:3000) & uv run dagster dev -m orchestration.definitions
+    python -c "import threading, webbrowser, time; threading.Timer(3, lambda: webbrowser.open('http://localhost:3000')).start()"
+    uv run dagster dev -m orchestration.definitions
 
 # Launch DuckDB UI (opens in browser, read-only to allow concurrent Dagster runs)
 db:
@@ -25,7 +34,7 @@ extract:
 
 # Run full extraction job with fresh data (clears HTTP cache first)
 extract-fresh:
-    rm -rf cache/
+    python -c "import shutil; shutil.rmtree('cache', ignore_errors=True)"
     uv run dagster job execute -m orchestration.definitions -j extraction_job
 
 # dbt project paths
@@ -65,8 +74,4 @@ experiment model:
 
 # Create and run a wandb sweep
 sweep model count="5":
-    #!/usr/bin/env bash
-    output=$(uv run wandb sweep models/{{model}}.yml --project flood-forecasting 2>&1)
-    echo "$output"
-    agent_cmd=$(echo "$output" | grep -oE 'wandb agent [^ ]+')
-    uv run $agent_cmd --count {{count}}
+    python -c "import subprocess, re, sys; output = subprocess.run(['uv', 'run', 'wandb', 'sweep', 'models/{{model}}.yml', '--project', 'flood-forecasting'], capture_output=True, text=True); print(output.stdout, end=''); print(output.stderr, end='', file=sys.stderr); match = re.search(r'wandb agent [^\s]+', output.stdout + output.stderr); agent_cmd = match.group(0) if match else None; sys.exit(1) if not agent_cmd else subprocess.run(['uv', 'run'] + agent_cmd.split()[2:] + ['--count', '{{count}}'])"
