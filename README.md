@@ -11,7 +11,19 @@ ML flood forecasting for the Missouri River Basin (HUC 10). Extracts hydrologica
 brew bundle install
 ```
 
-**Other platforms:** Install manually:
+**Windows:** Install using Chocolatey:
+
+First, install Chocolatey (run PowerShell as Administrator):
+```powershell
+Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+```
+
+Then install the packages (run PowerShell as Administrator):
+```powershell
+choco install uv just duckdb -y
+```
+
+**Linux:** Install manually:
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) - Python package manager
 - [just](https://github.com/casey/just#installation) - Command runner
 - [duckdb](https://duckdb.org/docs/installation/) - Database CLI
