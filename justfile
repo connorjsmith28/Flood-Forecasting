@@ -1,10 +1,7 @@
-# Shell configuration: Auto-detect based on OS
-# On Windows, PowerShell is used; on macOS/Linux, sh is used
-# This uses just's os() function to conditionally set the shell
-set shell := ["sh", "-c"]
-
-# Windows users: Uncomment the line below and comment out the line above
-# set shell := ["powershell.exe", "-c"]
+# Cross-platform shell configuration
+# Unix (macOS/Linux) uses sh by default
+# Windows automatically uses PowerShell via windows-shell setting
+set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 
 # Run full pipeline setup (extract + transform)
 setup: extract transform
@@ -66,7 +63,8 @@ dbt-build:
 
 # Generate dbt docs
 dbt-docs:
-    uv run dbt docs generate {{dbt_args}} && uv run dbt docs serve {{dbt_args}}
+    uv run dbt docs generate {{dbt_args}}
+    uv run dbt docs serve {{dbt_args}}
 
 # Run ML experiment (logs to wandb)
 experiment model:
