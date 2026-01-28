@@ -25,7 +25,8 @@ dependencies = [
     "ruff",
     "sqlfluff",
     "sqlfluff-templater-dbt",
-    "pandas"
+    "pandas",
+    "and another one"
 ]
 
 [project.optional-dependencies]
