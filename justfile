@@ -73,3 +73,11 @@ experiment model:
 # Create and run a wandb sweep
 sweep model count="5":
     uv run python -c "import subprocess, re, sys; output = subprocess.run(['uv', 'run', 'wandb', 'sweep', 'models/{{model}}.yml', '--project', 'flood-forecasting'], capture_output=True, text=True); print(output.stdout, end=''); print(output.stderr, end='', file=sys.stderr); match = re.search(r'wandb agent ([^\s]+)', output.stdout + output.stderr); sweep_id = match.group(1) if match else None; sys.exit(1) if not sweep_id else subprocess.run(['uv', 'run', 'wandb', 'agent', sweep_id, '--count', '{{count}}'])"
+
+# Full pipeline: extract, transform, upload to W&B (incremental)
+sync-wandb: extract transform
+    uv run python scripts/upload_dataset.py
+
+# Full pipeline with fresh data (clears cache, replaces W&B data)
+sync-wandb-fresh: extract-fresh transform
+    uv run python scripts/upload_dataset.py --full-refresh
