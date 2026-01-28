@@ -1,10 +1,5 @@
-#!/usr/bin/env python3
-"""Upload flood_model dataset to W&B as an artifact (single version).
+"""W&B dataset artifact asset for flood forecasting."""
 
-Supports incremental updates by merging local data with existing W&B artifact.
-"""
-
-import argparse
 import hashlib
 import json
 import tempfile
@@ -14,14 +9,27 @@ from pathlib import Path
 import duckdb
 import polars as pl
 import wandb
+from dagster import (
+    asset,
+    AssetExecutionContext,
+    MaterializeResult,
+    MetadataValue,
+    Config,
+)
+
+from orchestration.utils import get_db_path
+
+
+class WandbDatasetConfig(Config):
+    """Configuration for W&B dataset upload."""
+
+    full_refresh: bool = False
+    project: str = "flood-forecasting"
+    artifact_name: str = "flood-dataset"
 
 
 def get_schema_fingerprint(con: duckdb.DuckDBPyConnection) -> tuple[str, dict]:
-    """Generate a fingerprint of the table schema.
-
-    Returns:
-        tuple: (fingerprint_hash, schema_dict)
-    """
+    """Generate a fingerprint of the table schema."""
     schema_info = con.execute("""
         SELECT column_name, data_type
         FROM information_schema.columns
@@ -37,31 +45,10 @@ def get_schema_fingerprint(con: duckdb.DuckDBPyConnection) -> tuple[str, dict]:
     return fingerprint, schema_dict
 
 
-def delete_old_versions(api: wandb.Api, project: str, artifact_name: str):
-    """Delete all but the latest version of an artifact."""
-    try:
-        artifact_path = f"{project}/{artifact_name}"
-        versions = api.artifacts(type_name="dataset", name=artifact_path)
-
-        # Sort by version number and delete all but latest
-        version_list = list(versions)
-        if len(version_list) > 1:
-            # Keep the highest version (most recent)
-            for artifact in version_list[:-1]:
-                print(f"Deleting old version: {artifact.name}:{artifact.version}")
-                artifact.delete()
-    except Exception as e:
-        print(f"Note: Could not clean old versions: {e}")
-
-
 def download_existing_artifact(
     api: wandb.Api, project: str, artifact_name: str, download_dir: Path
 ) -> Path | None:
-    """Download the existing artifact from W&B.
-
-    Returns:
-        Path to the downloaded parquet file, or None if no artifact exists.
-    """
+    """Download the existing artifact from W&B."""
     try:
         artifact = api.artifact(f"{project}/{artifact_name}:latest")
         artifact_dir = artifact.download(root=str(download_dir))
@@ -73,29 +60,19 @@ def download_existing_artifact(
         return None
 
 
-def merge_datasets(local_df: pl.DataFrame, existing_path: Path | None) -> pl.DataFrame:
-    """Merge local data with existing W&B data.
-
-    Deduplicates on (site_id, observation_hour), preferring local data
-    for overlapping records.
-
-    Args:
-        local_df: DataFrame from local DuckDB
-        existing_path: Path to existing parquet from W&B, or None
-
-    Returns:
-        Merged DataFrame
-    """
+def merge_datasets(
+    local_df: pl.DataFrame, existing_path: Path | None, context: AssetExecutionContext
+) -> pl.DataFrame:
+    """Merge local data with existing W&B data."""
     if existing_path is None:
-        print("No existing artifact, using local data only")
+        context.log.info("No existing artifact, using local data only")
         return local_df
 
     existing_df = pl.read_parquet(existing_path)
-    print(f"Existing artifact: {len(existing_df):,} rows")
-    print(f"Local data: {len(local_df):,} rows")
+    context.log.info(f"Existing artifact: {len(existing_df):,} rows")
+    context.log.info(f"Local data: {len(local_df):,} rows")
 
     # Combine with local data taking precedence for duplicates
-    # Use anti-join to get existing rows not in local, then concat with local
     existing_only = existing_df.join(
         local_df.select(["site_id", "observation_hour"]),
         on=["site_id", "observation_hour"],
@@ -103,19 +80,42 @@ def merge_datasets(local_df: pl.DataFrame, existing_path: Path | None) -> pl.Dat
     )
 
     merged = pl.concat([local_df, existing_only])
-    print(f"Merged result: {len(merged):,} rows")
-    print(f"  New/updated from local: {len(local_df):,}")
-    print(f"  Retained from existing: {len(existing_only):,}")
+    context.log.info(f"Merged result: {len(merged):,} rows")
+    context.log.info(f"  New/updated from local: {len(local_df):,}")
+    context.log.info(f"  Retained from existing: {len(existing_only):,}")
 
     return merged
 
 
-def upload_dataset(
-    db_path: str = "flood_forecasting.duckdb",
-    project: str = "flood-forecasting",
-    artifact_name: str = "flood-dataset",
-    full_refresh: bool = False,
+def delete_old_versions(
+    api: wandb.Api, project: str, artifact_name: str, context: AssetExecutionContext
 ):
+    """Delete all but the latest version of an artifact."""
+    try:
+        artifact_path = f"{project}/{artifact_name}"
+        versions = api.artifacts(type_name="dataset", name=artifact_path)
+
+        version_list = list(versions)
+        if len(version_list) > 1:
+            for artifact in version_list[:-1]:
+                context.log.info(
+                    f"Deleting old version: {artifact.name}:{artifact.version}"
+                )
+                artifact.delete()
+    except Exception as e:
+        context.log.warning(f"Could not clean old versions: {e}")
+
+
+@asset(
+    group_name="sync",
+    description="Upload flood_model dataset to W&B as an artifact",
+    compute_kind="wandb",
+    deps=["dbt_flood_forecasting"],
+)
+def wandb_dataset(
+    context: AssetExecutionContext,
+    config: WandbDatasetConfig,
+) -> MaterializeResult:
     """Export flood_model table and upload as W&B artifact.
 
     For incremental runs, merges local data with existing W&B artifact.
@@ -123,25 +123,20 @@ def upload_dataset(
 
     Maintains only a single version to save storage. Schema changes
     are tracked via fingerprints logged as metadata.
-
-    Args:
-        db_path: Path to DuckDB database
-        project: W&B project name
-        artifact_name: Name for the artifact
-        full_refresh: If True, skip merge and upload local data only
     """
+    db_path = get_db_path()
     con = duckdb.connect(db_path, read_only=True)
 
     # Get schema fingerprint
     fingerprint, schema_dict = get_schema_fingerprint(con)
-    print(f"Schema fingerprint: {fingerprint}")
-    print(f"Columns: {len(schema_dict)}")
+    context.log.info(f"Schema fingerprint: {fingerprint}")
+    context.log.info(f"Columns: {len(schema_dict)}")
 
     # Load local data
     local_df = con.execute("SELECT * FROM main.flood_model").pl()
     con.close()
 
-    print(f"Local flood_model: {len(local_df):,} rows")
+    context.log.info(f"Local flood_model: {len(local_df):,} rows")
 
     # Check previous fingerprint to detect schema changes
     api = wandb.Api()
@@ -149,29 +144,31 @@ def upload_dataset(
     previous_fingerprint = None
 
     try:
-        prev_artifact = api.artifact(f"{project}/{artifact_name}:latest")
+        prev_artifact = api.artifact(f"{config.project}/{config.artifact_name}:latest")
         previous_fingerprint = prev_artifact.metadata.get("schema_fingerprint")
         if previous_fingerprint and previous_fingerprint != fingerprint:
             schema_changed = True
-            print(f"Schema change detected! {previous_fingerprint} -> {fingerprint}")
+            context.log.warning(
+                f"Schema change detected! {previous_fingerprint} -> {fingerprint}"
+            )
     except wandb.errors.CommError:
-        print("No previous artifact found, creating initial version")
+        context.log.info("No previous artifact found, creating initial version")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir_path = Path(tmpdir)
 
         # Merge with existing data unless full refresh or schema changed
-        if full_refresh:
-            print("Full refresh requested, using local data only")
+        if config.full_refresh:
+            context.log.info("Full refresh requested, using local data only")
             final_df = local_df
         elif schema_changed:
-            print("Schema changed, using local data only (incompatible schemas)")
+            context.log.info("Schema changed, using local data only (incompatible)")
             final_df = local_df
         else:
             existing_path = download_existing_artifact(
-                api, project, artifact_name, tmpdir_path / "existing"
+                api, config.project, config.artifact_name, tmpdir_path / "existing"
             )
-            final_df = merge_datasets(local_df, existing_path)
+            final_df = merge_datasets(local_df, existing_path, context)
 
         # Get stats from merged data
         row_count = len(final_df)
@@ -184,18 +181,18 @@ def upload_dataset(
         final_df.write_parquet(parquet_path)
 
         file_size_mb = parquet_path.stat().st_size / (1024 * 1024)
-        print(f"Parquet file size: {file_size_mb:.1f} MB")
+        context.log.info(f"Parquet file size: {file_size_mb:.1f} MB")
 
         # Initialize W&B run
         run = wandb.init(
-            project=project,
+            project=config.project,
             job_type="dataset-sync",
             config={
                 "row_count": row_count,
                 "site_count": site_count,
                 "min_date": str(min_date),
                 "max_date": str(max_date),
-                "full_refresh": full_refresh,
+                "full_refresh": config.full_refresh,
                 "schema_fingerprint": fingerprint,
                 "schema_changed": schema_changed,
             },
@@ -203,7 +200,7 @@ def upload_dataset(
 
         # Create artifact with schema metadata
         artifact = wandb.Artifact(
-            name=artifact_name,
+            name=config.artifact_name,
             type="dataset",
             description="ML-ready flood forecasting dataset",
             metadata={
@@ -244,41 +241,26 @@ def upload_dataset(
         run.finish()
 
     # Clean up old versions to save storage
-    delete_old_versions(api, project, artifact_name)
+    delete_old_versions(api, config.project, config.artifact_name, context)
 
-    print(
-        f"Uploaded {row_count:,} rows ({file_size_mb:.1f} MB) to {project}/{artifact_name}"
+    context.log.info(
+        f"Uploaded {row_count:,} rows ({file_size_mb:.1f} MB) "
+        f"to {config.project}/{config.artifact_name}"
     )
-    return artifact
 
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Upload flood_model dataset to W&B")
-    parser.add_argument(
-        "--db-path",
-        default="flood_forecasting.duckdb",
-        help="Path to DuckDB database",
-    )
-    parser.add_argument(
-        "--project",
-        default="flood-forecasting",
-        help="W&B project name",
-    )
-    parser.add_argument(
-        "--artifact-name",
-        default="flood-dataset",
-        help="Name for the W&B artifact",
-    )
-    parser.add_argument(
-        "--full-refresh",
-        action="store_true",
-        help="Skip merge and upload local data only (replaces everything)",
-    )
-    args = parser.parse_args()
-
-    upload_dataset(
-        db_path=args.db_path,
-        project=args.project,
-        artifact_name=args.artifact_name,
-        full_refresh=args.full_refresh,
+    return MaterializeResult(
+        metadata={
+            "row_count": row_count,
+            "site_count": site_count,
+            "file_size_mb": MetadataValue.float(round(file_size_mb, 2)),
+            "schema_fingerprint": fingerprint,
+            "schema_changed": schema_changed,
+            "full_refresh": config.full_refresh,
+            "date_range": MetadataValue.json(
+                {
+                    "min": str(min_date),
+                    "max": str(max_date),
+                }
+            ),
+        }
     )

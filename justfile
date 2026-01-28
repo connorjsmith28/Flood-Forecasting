@@ -75,9 +75,10 @@ sweep model count="5":
     uv run python -c "import subprocess, re, sys; output = subprocess.run(['uv', 'run', 'wandb', 'sweep', 'models/{{model}}.yml', '--project', 'flood-forecasting'], capture_output=True, text=True); print(output.stdout, end=''); print(output.stderr, end='', file=sys.stderr); match = re.search(r'wandb agent ([^\s]+)', output.stdout + output.stderr); sweep_id = match.group(1) if match else None; sys.exit(1) if not sweep_id else subprocess.run(['uv', 'run', 'wandb', 'agent', sweep_id, '--count', '{{count}}'])"
 
 # Full pipeline: extract, transform, upload to W&B (incremental)
-sync-wandb: extract transform
-    uv run python scripts/upload_dataset.py
+sync-wandb:
+    uv run dagster job execute -m orchestration.definitions -j sync_job
 
 # Full pipeline with fresh data (clears cache, replaces W&B data)
-sync-wandb-fresh: extract-fresh transform
-    uv run python scripts/upload_dataset.py --full-refresh
+sync-wandb-fresh:
+    uv run python -c "import shutil; shutil.rmtree('cache', ignore_errors=True)"
+    uv run dagster job execute -m orchestration.definitions -j sync_job --config '{"ops": {"wandb_dataset": {"config": {"full_refresh": true}}}}'
