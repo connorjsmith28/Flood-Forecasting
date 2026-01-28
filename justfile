@@ -3,6 +3,26 @@
 # Windows automatically uses PowerShell via windows-shell setting
 set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
 
+# Clean and recreate virtual environment (fixes corrupted packages)
+[unix]
+reset-venv:
+    rm -rf .venv
+    uv sync
+
+[windows]
+reset-venv:
+    if (Test-Path .venv) { Remove-Item -Recurse -Force .venv }
+    uv sync
+
+# Clean leftover Dagster temp directories (fixes permission errors)
+[unix]
+clean-dagster:
+    rm -rf .tmp_dagster_home_*
+
+[windows]
+clean-dagster:
+    Get-ChildItem -Force -Filter ".tmp_dagster_home_*" -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+
 # Run full pipeline setup (extract + transform)
 setup: extract transform
 
@@ -69,6 +89,7 @@ dbt-docs:
 # Run ML experiment (logs to wandb)
 experiment model:
     uv run python models/{{model}}.py
+
 
 # Create and run a wandb sweep
 sweep model count="5":
