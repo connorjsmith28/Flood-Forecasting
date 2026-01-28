@@ -83,8 +83,8 @@ final as (
     from streamflow_with_coords as sws
     left join weather as w
         on
-            round(sws.longitude, 2) = round(w.longitude, 2)
-            and round(sws.latitude, 2) = round(w.latitude, 2)
+            sws.longitude = w.longitude
+            and sws.latitude = w.latitude
             and sws.observation_hour = w.observed_at
 )
 
