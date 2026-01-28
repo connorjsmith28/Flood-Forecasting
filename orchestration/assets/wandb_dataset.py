@@ -60,28 +60,37 @@ def download_existing_artifact(
         return None
 
 
+def normalize_timezone(df: pl.DataFrame) -> pl.DataFrame:
+    """Convert observation_hour to UTC for consistent merging."""
+    return df.with_columns(pl.col("observation_hour").dt.convert_time_zone("UTC"))
+
+
 def merge_datasets(
     local_df: pl.DataFrame, existing_path: Path | None, context: AssetExecutionContext
 ) -> pl.DataFrame:
     """Merge local data with existing W&B data."""
     if existing_path is None:
         context.log.info("No existing artifact, using local data only")
-        return local_df
+        return normalize_timezone(local_df)
 
     existing_df = pl.read_parquet(existing_path)
     context.log.info(f"Existing artifact: {len(existing_df):,} rows")
     context.log.info(f"Local data: {len(local_df):,} rows")
 
+    # Normalize timezones to UTC for consistent joining
+    local_normalized = normalize_timezone(local_df)
+    existing_normalized = normalize_timezone(existing_df)
+
     # Combine with local data taking precedence for duplicates
-    existing_only = existing_df.join(
-        local_df.select(["site_id", "observation_hour"]),
+    existing_only = existing_normalized.join(
+        local_normalized.select(["site_id", "observation_hour"]),
         on=["site_id", "observation_hour"],
         how="anti",
     )
 
-    merged = pl.concat([local_df, existing_only])
+    merged = pl.concat([local_normalized, existing_only])
     context.log.info(f"Merged result: {len(merged):,} rows")
-    context.log.info(f"  New/updated from local: {len(local_df):,}")
+    context.log.info(f"  New/updated from local: {len(local_normalized):,}")
     context.log.info(f"  Retained from existing: {len(existing_only):,}")
 
     return merged
@@ -90,18 +99,23 @@ def merge_datasets(
 def delete_old_versions(
     api: wandb.Api, project: str, artifact_name: str, context: AssetExecutionContext
 ):
-    """Delete all but the latest version of an artifact."""
+    """Delete old versions of an artifact, skipping those with aliases."""
     try:
         artifact_path = f"{project}/{artifact_name}"
         versions = api.artifacts(type_name="dataset", name=artifact_path)
 
-        version_list = list(versions)
-        if len(version_list) > 1:
-            for artifact in version_list[:-1]:
-                context.log.info(
-                    f"Deleting old version: {artifact.name}:{artifact.version}"
+        for artifact in versions:
+            # Skip artifacts with aliases (like "latest")
+            if artifact.aliases:
+                context.log.debug(
+                    f"Skipping {artifact.version} (has aliases: {artifact.aliases})"
                 )
+                continue
+            try:
+                context.log.info(f"Deleting old version: {artifact.version}")
                 artifact.delete()
+            except Exception as e:
+                context.log.debug(f"Could not delete {artifact.version}: {e}")
     except Exception as e:
         context.log.warning(f"Could not clean old versions: {e}")
 
@@ -160,10 +174,10 @@ def wandb_dataset(
         # Merge with existing data unless full refresh or schema changed
         if config.full_refresh:
             context.log.info("Full refresh requested, using local data only")
-            final_df = local_df
+            final_df = normalize_timezone(local_df)
         elif schema_changed:
             context.log.info("Schema changed, using local data only (incompatible)")
-            final_df = local_df
+            final_df = normalize_timezone(local_df)
         else:
             existing_path = download_existing_artifact(
                 api, config.project, config.artifact_name, tmpdir_path / "existing"
