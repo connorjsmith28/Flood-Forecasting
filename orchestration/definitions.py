@@ -14,12 +14,13 @@ from dagster_dbt import DbtCliResource
 
 from orchestration.resources import DuckDBResource
 from orchestration.utils import get_db_path, DBT_PROJECT_DIR
-from orchestration.jobs import extraction_job, transformation_job, full_pipeline_job
+from orchestration.jobs import extraction_job, transformation_job, full_pipeline_job, sync_job
 from orchestration.assets import (
     usgs_site_metadata,
     usgs_streamflow_raw,
     weather_forcing_raw,
     dbt_flood_forecasting,
+    wandb_dataset,
 )
 
 # Set DUCKDB_PATH env var so dbt profiles.yml can reference it
@@ -33,11 +34,13 @@ defs = Definitions(
         usgs_streamflow_raw,
         weather_forcing_raw,
         dbt_flood_forecasting,
+        wandb_dataset,
     ],
     jobs=[
         extraction_job,
         transformation_job,
         full_pipeline_job,
+        sync_job,
     ],
     resources={
         "duckdb": DuckDBResource(database_path=get_db_path()),

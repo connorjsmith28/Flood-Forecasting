@@ -19,3 +19,9 @@ full_pipeline_job = define_asset_job(
     description="Run full ELT pipeline: extract then transform",
     selection=AssetSelection.groups("extraction", "transformation"),
 )
+
+sync_job = define_asset_job(
+    name="sync_job",
+    description="Full pipeline + upload to W&B: extract, transform, sync dataset",
+    selection=AssetSelection.groups("extraction", "transformation", "sync"),
+)
