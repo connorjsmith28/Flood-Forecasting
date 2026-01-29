@@ -17,6 +17,8 @@ WEATHER_VARS = {
     "wind_speed": "wind_speed_10m",
     "wind_direction": "wind_direction_10m",
     "rsds": "shortwave_radiation",
+    "rlds": "terrestrial_radiation",
+    "psurf": "surface_pressure",
     "pet": "et0_fao_evapotranspiration",
 }
 
@@ -48,9 +50,9 @@ def _parse_response(response, lon, lat, variables) -> pl.DataFrame:
     return pl.DataFrame({
         "longitude": lon,
         "latitude": lat,
-        "datetime": np.arange(hourly.Time(), hourly.TimeEnd(), hourly.Interval()),
+        "datetime": np.arange(hourly.Time(), hourly.TimeEnd(), hourly.Interval()) * 1000,
         **var_data,
-    }).cast({"datetime": pl.Datetime("s", "UTC")})
+    }).cast({"datetime": pl.Datetime("ms", "UTC")})
 
 
 def fetch_weather_forcing(coordinates, start_date, end_date, variables=None) -> pl.DataFrame:

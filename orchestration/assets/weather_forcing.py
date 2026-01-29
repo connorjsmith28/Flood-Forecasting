@@ -44,12 +44,13 @@ def weather_forcing_raw(
     """
     from elt.extraction.weather import fetch_weather_forcing
 
-    # Get site coordinates from metadata
+    # Get coordinates only for sites that have streamflow data
     with duckdb.get_connection() as conn:
         query = f"""
-            SELECT site_id, longitude, latitude
-            FROM {RAW_SCHEMA}.{TBL_SITE_METADATA}
-            WHERE longitude IS NOT NULL AND latitude IS NOT NULL
+            SELECT DISTINCT m.site_id, m.longitude, m.latitude
+            FROM {RAW_SCHEMA}.{TBL_SITE_METADATA} m
+            INNER JOIN {RAW_SCHEMA}.streamflow_raw s ON m.site_id = s.site_id
+            WHERE m.longitude IS NOT NULL AND m.latitude IS NOT NULL
         """
         if config.sample_mode:
             query += f" LIMIT {config.max_sites}"

@@ -1,7 +1,6 @@
 Original github repo: https://github.com/vinhngoctran/CAMELSH
 Look into larger batching mateo, since I had some issues with frequent small batches getting me cutoff. 
-Building the sample dataset could be better. I only pull a sub sample of sites, but all of the streamdata for it. Those dates also don't align 
-with the force times which makes the combined datasite a subset of all 3 which is not ideal. 
+Investigate why stream data is so sparse compared to sites. There are 13k sites, but like 10% of them have stream data which seems off to me. 
 
 Columns missing compared to CAMELSH:
     * Specific Humidity
