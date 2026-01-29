@@ -6,7 +6,7 @@ from dagster import Config
 class ExtractionConfig(Config):
     """Base configuration for extraction assets."""
 
-    sample_mode: bool = True  # If True, only load a limited sample for USGS data
+    sample_mode: bool = False  # If True, only load a limited sample for USGS data
     max_sites: int = 100  # Max sites to load in sample mode (controls USGS data volume)
 
 
@@ -21,7 +21,7 @@ class StreamflowConfig(ExtractionConfig):
 class WeatherConfig(ExtractionConfig):
     """Configuration for weather forcing data extraction (Open-Meteo)."""
 
-    days_back: int = 7
+    days_back: int = 30
     incremental_days: int = 2
     variables: list[str] = [
         "prcp",
