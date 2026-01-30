@@ -28,14 +28,7 @@ jobs:
         run: uv sync
 
       - name: Run extraction
-        run: |
-          # CI smoke test: 10 sites, 3 days of data for fast validation
-          uv run dagster job execute -m orchestration.definitions -j extraction_job --config '{"ops": {
-            "usgs_site_metadata": {"config": {"sample_mode": true, "max_sites": 10}},
-            "usgs_streamflow_15min": {"config": {"sample_mode": true, "max_sites": 10, "days_back": 3}},
-            "usgs_streamflow_daily": {"config": {"sample_mode": true, "max_sites": 10, "days_back": 3}},
-            "weather_forcing_raw": {"config": {"sample_mode": true, "max_sites": 10, "days_back": 3}}
-          }}'
+        run: uv run dagster job execute -m orchestration.definitions -j extraction_job --config orchestration/configs/ci_smoke_test.yaml
         env:
           DUCKDB_PATH: ${{ github.workspace }}/flood_forecasting.duckdb
 
