@@ -28,7 +28,7 @@ jobs:
         run: uv sync
 
       - name: Run extraction
-        run: just extract
+        run: uv run dagster job execute -m orchestration.definitions -j extraction_job --config orchestration/configs/ci_smoke_test.yaml
         env:
           DUCKDB_PATH: ${{ github.workspace }}/flood_forecasting.duckdb
 

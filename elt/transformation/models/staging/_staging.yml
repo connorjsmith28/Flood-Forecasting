@@ -11,7 +11,7 @@ models:
           - not_null
 
   - name: stg_streamflow
-    description: USGS instantaneous streamflow observations
+    description: USGS instantaneous streamflow observations (15-minute intervals)
     columns:
       - name: site_id
         description: USGS site identifier
@@ -25,6 +25,26 @@ models:
         description: Discharge in cubic feet per second
       - name: gage_height_ft
         description: Water level (gage height) in feet above datum
+      - name: qualifiers
+        description: Data quality flags
+      - name: extracted_at
+        description: When the data was extracted
+
+  - name: stg_streamflow_daily
+    description: USGS daily mean streamflow observations
+    columns:
+      - name: site_id
+        description: USGS site identifier
+        tests:
+          - not_null
+      - name: observed_date
+        description: Observation date
+        tests:
+          - not_null
+      - name: streamflow_cfs_mean
+        description: Daily mean discharge in cubic feet per second
+      - name: gage_height_ft_mean
+        description: Daily mean water level (gage height) in feet above datum
       - name: qualifiers
         description: Data quality flags
       - name: extracted_at

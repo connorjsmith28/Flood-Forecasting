@@ -21,7 +21,7 @@ sources:
           - name: huc_code
             description: Hydrologic Unit Code
 
-      - name: streamflow_raw
+      - name: streamflow_15min
         description: USGS instantaneous streamflow observations (15-minute intervals)
         columns:
           - name: site_id
@@ -32,6 +32,22 @@ sources:
             description: Discharge in cubic feet per second
           - name: gage_height_ft
             description: Water level (gage height) in feet above datum
+          - name: qualifiers
+            description: Data quality flags
+          - name: extracted_at
+            description: When the data was extracted
+
+      - name: streamflow_daily
+        description: USGS daily mean streamflow observations
+        columns:
+          - name: site_id
+            description: USGS site identifier
+          - name: date
+            description: Observation date
+          - name: streamflow_cfs_mean
+            description: Daily mean discharge in cubic feet per second
+          - name: gage_height_ft_mean
+            description: Daily mean water level (gage height) in feet above datum
           - name: qualifiers
             description: Data quality flags
           - name: extracted_at

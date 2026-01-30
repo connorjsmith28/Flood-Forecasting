@@ -6,14 +6,14 @@ from dagster import Config
 class ExtractionConfig(Config):
     """Base configuration for extraction assets."""
 
-    sample_mode: bool = True  # If True, only load a limited sample for USGS data
+    sample_mode: bool = False  # If True, only load a limited sample for USGS data
     max_sites: int = 100  # Max sites to load in sample mode (controls USGS data volume)
 
 
 class StreamflowConfig(ExtractionConfig):
     """Configuration for streamflow extraction."""
 
-    days_back: int = 30  # Days of history for initial load
+    days_back: int = 7  # Days of history for initial load
     incremental_days: int = 2  # Days to look back for incremental (overlap for safety)
     site_ids: list[str] | None = None
 

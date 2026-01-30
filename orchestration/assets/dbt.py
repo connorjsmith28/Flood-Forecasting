@@ -17,7 +17,8 @@ from orchestration.utils import DBT_PROJECT_DIR
     compute_kind="dbt",
     deps=[
         "usgs_site_metadata",
-        "usgs_streamflow_raw",
+        "usgs_streamflow_15min",
+        "usgs_streamflow_daily",
         "weather_forcing_raw",
     ],
 )
