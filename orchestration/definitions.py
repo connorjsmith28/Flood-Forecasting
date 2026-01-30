@@ -17,7 +17,8 @@ from orchestration.utils import get_db_path, DBT_PROJECT_DIR
 from orchestration.jobs import extraction_job, transformation_job, full_pipeline_job, sync_job
 from orchestration.assets import (
     usgs_site_metadata,
-    usgs_streamflow_raw,
+    usgs_streamflow_15min,
+    usgs_streamflow_daily,
     weather_forcing_raw,
     dbt_flood_forecasting,
     wandb_dataset,
@@ -31,7 +32,8 @@ os.environ["DUCKDB_PATH"] = get_db_path()
 defs = Definitions(
     assets=[
         usgs_site_metadata,
-        usgs_streamflow_raw,
+        usgs_streamflow_15min,
+        usgs_streamflow_daily,
         weather_forcing_raw,
         dbt_flood_forecasting,
         wandb_dataset,

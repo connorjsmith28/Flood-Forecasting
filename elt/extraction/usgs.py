@@ -29,10 +29,29 @@ _retry = retry(
 )
 
 
-def get_site_metadata(huc_code: str, max_sites: int | None = None) -> pd.DataFrame:
-    """Discover USGS sites in a HUC region and fetch their metadata."""
+def get_site_metadata(
+    huc_code: str,
+    max_sites: int | None = None,
+    parameter_codes: list[str] | None = None,
+    data_type: str | None = None,
+) -> pd.DataFrame:
+    """Discover USGS sites in a HUC region and fetch their metadata.
+
+    Args:
+        huc_code: HUC region code (e.g., "10" for Missouri Basin)
+        max_sites: Maximum number of sites to return (for sampling)
+        parameter_codes: Filter for sites with specific parameters (e.g., ["00060"] for discharge)
+        data_type: Filter for data type availability ("iv" for instantaneous, "dv" for daily)
+    """
+    # Build query parameters (use siteTypeCd not siteType - API requirement)
+    query_params = {"huc": huc_code, "siteTypeCd": "ST"}
+    if parameter_codes:
+        query_params["parameterCd"] = ",".join(parameter_codes)
+    if data_type:
+        query_params["hasDataTypeCd"] = data_type
+
     # Discover sites in the HUC region
-    df, _ = nwis.what_sites(huc=huc_code, siteType="ST")
+    df, _ = nwis.what_sites(**query_params)
     if df is None or df.empty:
         return pd.DataFrame()
 
@@ -61,11 +80,15 @@ def get_site_metadata(huc_code: str, max_sites: int | None = None) -> pd.DataFra
 @_retry
 def fetch_usgs_streamflow(site_ids, start_date, end_date) -> pd.DataFrame:
     """Fetch streamflow and gage height data (15-min intervals) from USGS NWIS."""
+    # Convert dates to strings - dataretrieval requires YYYY-MM-DD format
+    start_str = start_date.strftime("%Y-%m-%d") if hasattr(start_date, "strftime") else str(start_date)
+    end_str = end_date.strftime("%Y-%m-%d") if hasattr(end_date, "strftime") else str(end_date)
+
     df, _ = nwis.get_iv(
         sites=list(site_ids),
         parameterCd=["00060", "00065"],  # Discharge (cfs), Gage height (ft)
-        start=start_date,
-        end=end_date,
+        start=start_str,
+        end=end_str,
     )
     out_cols = ["site_id", "datetime", "streamflow_cfs", "gage_height_ft", "qualifiers"]
     if df.empty:
@@ -75,6 +98,41 @@ def fetch_usgs_streamflow(site_ids, start_date, end_date) -> pd.DataFrame:
         "site_no": "site_id",
         "00060": "streamflow_cfs",
         "00065": "gage_height_ft",
+    })
+    # Combine qualifier columns
+    qual_cols = [c for c in df.columns if c.endswith("_cd")]
+    df["qualifiers"] = df[qual_cols].apply(
+        lambda r: "|".join(str(v) for v in r if pd.notna(v)), axis=1
+    ) if qual_cols else None
+
+    return df[[c for c in out_cols if c in df.columns]].reindex(columns=out_cols)
+
+
+@_retry
+def fetch_usgs_daily(site_ids, start_date, end_date) -> pd.DataFrame:
+    """Fetch daily streamflow values from USGS NWIS.
+
+    Returns daily mean discharge and gage height statistics.
+    """
+    # Convert dates to strings - dataretrieval requires YYYY-MM-DD format
+    start_str = start_date.strftime("%Y-%m-%d") if hasattr(start_date, "strftime") else str(start_date)
+    end_str = end_date.strftime("%Y-%m-%d") if hasattr(end_date, "strftime") else str(end_date)
+
+    df, _ = nwis.get_dv(
+        sites=list(site_ids),
+        parameterCd=["00060", "00065"],  # Discharge (cfs), Gage height (ft)
+        start=start_str,
+        end=end_str,
+    )
+    out_cols = ["site_id", "date", "streamflow_cfs_mean", "gage_height_ft_mean", "qualifiers"]
+    if df.empty:
+        return pd.DataFrame(columns=out_cols)
+
+    df = df.reset_index().rename(columns={
+        "site_no": "site_id",
+        "datetime": "date",
+        "00060_Mean": "streamflow_cfs_mean",
+        "00065_Mean": "gage_height_ft_mean",
     })
     # Combine qualifier columns
     qual_cols = [c for c in df.columns if c.endswith("_cd")]

@@ -2,6 +2,8 @@
 
 ML flood forecasting for the Missouri River Basin (HUC 10). Extracts hydrological and meteorological data from public APIs, transforms it with dbt, and trains models tracked with Weights & Biases.
 
+https://dashboard.waterdata.usgs.gov/app/nwd/en/
+
 ## Quick Start
 
 ### 1. Install Prerequisites
@@ -87,12 +89,30 @@ exploratory/            # Notebooks
 
 ## Data Sources
 
+### Extracted Data
+
 | Source | Data | API |
 |--------|------|-----|
-| USGS NWIS | Streamflow (15-min) + site metadata | dataretrieval |
+| USGS NWIS | Streamflow + site metadata | dataretrieval |
 | Open-Meteo | Hourly weather forcing | open-meteo.com |
-| GAGES-II | Static watershed attributes | ScienceBase |
-| NLDI | Basin characteristics | pygeohydro |
+
+**USGS Site Coverage (Missouri Basin / HUC 10):**
+- ~13,000 total stream gage sites in USGS database
+- ~3,400 sites have discharge (water level) data
+- ~1,300 of those have instantaneous values (IV, 15-min resolution)
+- ~2,700 have daily values (includes sites without IV)
+
+We extract both IV and daily data. Sites are flagged with `has_iv` and `has_daily` in the metadata.
+
+### Seed Data (Static Attributes)
+
+Seed data comes from the [CAMELS dataset](https://www.osti.gov/pages/servlets/purl/2574906) and provides static watershed characteristics:
+
+| Source | Data | Description |
+|--------|------|-------------|
+| GAGES-II | Watershed attributes | Land cover, geology, soils, climate indices |
+| HydroATLAS | Catchment attributes | 195+ hydrological/environmental variables |
+| NLDAS-2 | Climate indices | Aridity index, precipitation seasonality |
 
 ## Creating New Models
 

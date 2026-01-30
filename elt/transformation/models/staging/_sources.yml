@@ -21,7 +21,7 @@ sources:
           - name: huc_code
             description: Hydrologic Unit Code
 
-      - name: streamflow_raw
+      - name: streamflow_15min
         description: USGS instantaneous streamflow observations (15-minute intervals)
         columns:
           - name: site_id

@@ -5,4 +5,4 @@ select
     gage_height_ft,
     qualifiers,
     extracted_at
-from {{ source('raw', 'streamflow_raw') }}
+from {{ source('raw', 'streamflow_15min') }}

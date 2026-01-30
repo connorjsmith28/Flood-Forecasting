@@ -13,7 +13,7 @@ class ExtractionConfig(Config):
 class StreamflowConfig(ExtractionConfig):
     """Configuration for streamflow extraction."""
 
-    days_back: int = 30  # Days of history for initial load
+    days_back: int = 7  # Days of history for initial load
     incremental_days: int = 2  # Days to look back for incremental (overlap for safety)
     site_ids: list[str] | None = None
 
@@ -21,7 +21,7 @@ class StreamflowConfig(ExtractionConfig):
 class WeatherConfig(ExtractionConfig):
     """Configuration for weather forcing data extraction (Open-Meteo)."""
 
-    days_back: int = 30
+    days_back: int = 7
     incremental_days: int = 2
     variables: list[str] = [
         "prcp",

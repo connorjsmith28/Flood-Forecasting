@@ -24,7 +24,7 @@ TBL_WEATHER = "weather_forcing"
     description="Raw meteorological forcing data from Open-Meteo (incremental)",
     compute_kind="python",
     deps=[
-        "usgs_streamflow_raw"
+        "usgs_streamflow_15min"
     ],  # Depend on streamflow to avoid DuckDB write lock conflicts
 )
 def weather_forcing_raw(
@@ -49,7 +49,7 @@ def weather_forcing_raw(
         query = f"""
             SELECT DISTINCT m.site_id, m.longitude, m.latitude
             FROM {RAW_SCHEMA}.{TBL_SITE_METADATA} m
-            INNER JOIN {RAW_SCHEMA}.streamflow_raw s ON m.site_id = s.site_id
+            INNER JOIN {RAW_SCHEMA}.streamflow_15min s ON m.site_id = s.site_id
             WHERE m.longitude IS NOT NULL AND m.latitude IS NOT NULL
         """
         if config.sample_mode:
@@ -90,62 +90,62 @@ def weather_forcing_raw(
             start_date=start_date,
             end_date=end_date,
             variables=config.variables,
+            log=context.log.info,
         )
     except Exception as e:
         context.log.error(f"Failed to fetch weather data: {e}")
         # Create empty table so dbt doesn't fail
         with duckdb.get_connection() as conn:
             conn.execute(f"CREATE SCHEMA IF NOT EXISTS {RAW_SCHEMA}")
-            conn.execute(f"""
+            var_cols = ",\n                    ".join(f"{v} DOUBLE" for v in config.variables)
+            conn.execute(
+                f"""
                 CREATE TABLE IF NOT EXISTS {RAW_SCHEMA}.{TBL_WEATHER} (
                     longitude DOUBLE,
                     latitude DOUBLE,
                     datetime TIMESTAMP,
-                    prcp DOUBLE,
-                    temp DOUBLE,
-                    humidity DOUBLE,
-                    wind_speed DOUBLE,
-                    wind_direction DOUBLE,
+                    {var_cols},
                     extracted_at TIMESTAMP
                 )
-            """)
+            """
+            )
         return MaterializeResult(
             metadata={"num_records": 0, "status": "fetch_failed", "error": str(e)}
         )
 
-    if df.empty:
+    if df.is_empty():
         # Create empty table with expected schema so dbt doesn't fail
         context.log.warning("No weather data fetched, creating empty table")
         with duckdb.get_connection() as conn:
             conn.execute(f"CREATE SCHEMA IF NOT EXISTS {RAW_SCHEMA}")
-            conn.execute(f"""
+            var_cols = ",\n                    ".join(f"{v} DOUBLE" for v in config.variables)
+            conn.execute(
+                f"""
                 CREATE TABLE IF NOT EXISTS {RAW_SCHEMA}.{TBL_WEATHER} (
                     longitude DOUBLE,
                     latitude DOUBLE,
                     datetime TIMESTAMP,
-                    prcp DOUBLE,
-                    temp DOUBLE,
-                    humidity DOUBLE,
-                    wind_speed DOUBLE,
-                    wind_direction DOUBLE,
+                    {var_cols},
                     extracted_at TIMESTAMP
                 )
-            """)
+            """
+            )
         return MaterializeResult(metadata={"num_records": 0, "status": "empty"})
 
     # Add extraction timestamp
-    df["extracted_at"] = datetime.now()
+    df = df.with_columns(extracted_at=datetime.now())
+    pdf = df.to_pandas()
 
     # Upsert to avoid duplicates
     new_records = upsert_timeseries(
-        duckdb, df, TBL_WEATHER, key_columns=["longitude", "latitude", "datetime"]
+        duckdb, pdf, TBL_WEATHER, key_columns=["longitude", "latitude", "datetime"]
     )
 
-    context.log.info(f"Inserted {new_records} new records (fetched {len(df)} total)")
+    context.log.info(f"Inserted {new_records} new records (fetched {len(pdf)} total)")
 
     return MaterializeResult(
         metadata={
-            "records_fetched": len(df),
+            "records_fetched": len(pdf),
             "records_inserted": new_records,
             "num_locations": len(coordinates),
             "sample_mode": config.sample_mode,

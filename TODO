@@ -1,6 +1,12 @@
 Original github repo: https://github.com/vinhngoctran/CAMELSH
-Look into larger batching mateo, since I had some issues with frequent small batches getting me cutoff. 
-Investigate why stream data is so sparse compared to sites. There are 13k sites, but like 10% of them have stream data which seems off to me. 
+Look into larger batching mateo, since I had some issues with frequent small batches getting me cutoff.
+Investigate why stream data is so sparse compared to sites. There are 13k sites, but like 10% of them have stream data which seems off to me.
+
+RESOLVED: Weather data was 2x streamflow data
+    * Root cause: Old code fetched weather for ALL sites in site_metadata (~12,920), not just sites with streamflow
+    * The current code (simplify_extractors branch) correctly filters to only sites with streamflow data via INNER JOIN
+    * Additional issue: 330 duplicate coordinates exist in site_metadata (same lat/lon, different site_ids)
+    * Fix: Delete database and re-run extraction with the updated code that joins on streamflow_raw 
 
 Columns missing compared to CAMELSH:
     * Specific Humidity

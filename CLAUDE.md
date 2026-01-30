@@ -13,11 +13,11 @@ The original CAMELSH dataset paper can be found: https://www.osti.gov/pages/serv
 ## Data Sources
 | Source | Data | Key ID |
 |--------|------|--------|
-| USGS NWIS | Streamflow (15-min) + site metadata | site_id |
+| USGS NWIS | Streamflow (15-min IV + daily) + site metadata | site_id |
 | Open-Meteo | Hourly weather forcing (precip, temp, humidity, wind, radiation) | lat/long |
-| GAGES-II (seeds) | Static watershed attributes | site_id |
-| HydroATLAS (seeds) | 195+ catchment attributes | site_id |
-| NLDAS-2 (seeds) | Climate indices (aridity, precipitation seasonality) | site_id |
+| GAGES-II (seeds) | Static watershed attributes (from CAMELS) | site_id |
+| HydroATLAS (seeds) | 195+ catchment attributes (from CAMELS) | site_id |
+| NLDAS-2 (seeds) | Climate indices (from CAMELS) | site_id |
 
 ## Project Structure
 ```
@@ -42,8 +42,9 @@ models/                 # ML models (not yet implemented)
 - **DuckDB**: `flood_forecasting.duckdb`
 - **Schemas**: `raw` (extracted data), `seeds` (dbt seeds), `staging`, `marts`, `final`
 - **Key tables**:
-  - `raw.site_metadata` - Site locations and drainage areas
-  - `raw.streamflow_raw` - USGS observations
+  - `raw.site_metadata` - Site locations, drainage areas, and data availability flags
+  - `raw.streamflow_15min` - USGS 15-minute interval observations
+  - `raw.streamflow_daily` - USGS daily mean values
   - `raw.weather_forcing` - Open-Meteo hourly data
   - `final.flood_model` - ML-ready training data
 

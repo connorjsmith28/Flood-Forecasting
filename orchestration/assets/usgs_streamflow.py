@@ -1,4 +1,4 @@
-"""USGS streamflow extraction asset."""
+"""USGS 15-minute streamflow extraction asset."""
 
 from datetime import datetime, timedelta
 
@@ -17,16 +17,16 @@ from orchestration.utils.timeseries import get_high_watermark, upsert_timeseries
 # Schema and table names
 RAW_SCHEMA = "raw"
 TBL_SITE_METADATA = "site_metadata"
-TBL_STREAMFLOW = "streamflow_raw"
+TBL_STREAMFLOW = "streamflow_15min"
 
 
 @asset(
     group_name="extraction",
-    description="Raw USGS streamflow observations (incremental)",
+    description="Raw USGS streamflow observations at 15-minute intervals (incremental)",
     compute_kind="python",
     deps=["usgs_site_metadata"],  # Depend on site metadata for site list
 )
-def usgs_streamflow_raw(
+def usgs_streamflow_15min(
     context: AssetExecutionContext,
     config: StreamflowConfig,
     duckdb: DuckDBResource,
