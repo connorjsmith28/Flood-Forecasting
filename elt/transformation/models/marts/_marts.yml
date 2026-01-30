@@ -13,7 +13,7 @@ models:
   - name: fct_streamflow_hourly
     description: >
       Hourly streamflow observations joined with site metadata and weather.
-      This is the primary fact table for flood forecasting models.
+      This is the primary fact table for flood forecasting models using 15-min IV data.
     columns:
       - name: site_id
         description: USGS site identifier
@@ -31,3 +31,33 @@ models:
         description: Maximum water level (ft) for the hour
       - name: gage_height_ft_min
         description: Minimum water level (ft) for the hour
+
+  - name: fct_streamflow_daily
+    description: >
+      Daily streamflow observations joined with aggregated daily weather.
+      For sites that only have daily data (no 15-min IV data available).
+    columns:
+      - name: site_id
+        description: USGS site identifier
+      - name: observed_date
+        description: Date of observation
+      - name: latitude
+        description: Site latitude
+      - name: longitude
+        description: Site longitude
+      - name: streamflow_cfs_mean
+        description: Daily mean discharge (cfs)
+      - name: gage_height_ft_mean
+        description: Daily mean water level (ft)
+      - name: precipitation_mm
+        description: Total daily precipitation (mm)
+      - name: temperature_c_mean
+        description: Mean daily temperature (°C)
+      - name: temperature_c_max
+        description: Maximum daily temperature (°C)
+      - name: temperature_c_min
+        description: Minimum daily temperature (°C)
+      - name: wind_speed_ms_mean
+        description: Mean daily wind speed (m/s)
+      - name: humidity_pct_mean
+        description: Mean daily relative humidity (%)

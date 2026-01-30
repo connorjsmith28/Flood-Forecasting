@@ -2,4 +2,14 @@ version: 2
 
 models:
   - name: flood_model
-    description: Flood model using streamflow and weather data
+    description: >
+      ML-ready flood model at hourly resolution using 15-min IV data.
+      Contains streamflow, weather, and static catchment attributes.
+      Target variables are 1-hour ahead predictions.
+
+  - name: flood_model_daily
+    description: >
+      ML-ready flood model at daily resolution for sites without 15-min IV data.
+      Contains streamflow, weather, and static catchment attributes.
+      Target variables are 1-day ahead predictions.
+      This expands site coverage from ~1,300 (IV only) to ~2,700 (IV + daily).

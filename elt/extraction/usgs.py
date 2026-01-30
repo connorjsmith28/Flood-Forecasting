@@ -43,8 +43,10 @@ def get_site_metadata(
         parameter_codes: Filter for sites with specific parameters (e.g., ["00060"] for discharge)
         data_type: Filter for data type availability ("iv" for instantaneous, "dv" for daily)
     """
-    # Build query parameters (use siteTypeCd not siteType - API requirement)
-    query_params = {"huc": huc_code, "siteTypeCd": "ST"}
+    # Build query parameters
+    # Note: siteTypeCd filter removed due to USGS API issues (Jan 2026)
+    # Filtering by parameterCd=00060 (discharge) effectively limits to stream sites
+    query_params = {"huc": huc_code}
     if parameter_codes:
         query_params["parameterCd"] = ",".join(parameter_codes)
     if data_type:

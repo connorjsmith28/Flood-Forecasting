@@ -1,33 +1,12 @@
 Original github repo: https://github.com/vinhngoctran/CAMELSH
 Look into larger batching mateo, since I had some issues with frequent small batches getting me cutoff.
 
-TODO: Integrate daily USGS streamflow into dbt final tables
+DONE: Integrate daily USGS streamflow into dbt final tables
     * raw.streamflow_daily now extracted alongside raw.streamflow_15min
-    * Need to add stg_streamflow_daily staging model
-    * Need to add fct_streamflow_daily mart model (or merge into existing)
-    * Update flood_model to optionally use daily data for sites without 15-min IV data
-    * This will increase site coverage from ~1,300 (IV only) to ~2,700 (IV + daily)
-
-RESOLVED: Stream data sparse compared to sites (13k sites, only ~1.3k with IV data)
-    * Root cause: USGS has ~13k stream sites in HUC 10, but only ~3,400 have discharge data
-    * Of those, only ~1,300 have instantaneous values (IV, 15-min resolution)
-    * The remaining ~2,100 have daily values only
-    * Fix: Now extracting both IV and daily data. Site metadata includes has_iv and has_daily flags.
-
-RESOLVED: Weather data was 2x streamflow data
-    * Root cause: Old code fetched weather for ALL sites in site_metadata (~12,920), not just sites with streamflow
-    * The current code (simplify_extractors branch) correctly filters to only sites with streamflow data via INNER JOIN
-    * Additional issue: 330 duplicate coordinates exist in site_metadata (same lat/lon, different site_ids)
-    * Fix: Delete database and re-run extraction with the updated code that joins on streamflow_15min
-
-RESOLVED: flood_model row count lower than fct_streamflow_hourly (117k vs 139k)
-    * Root cause: Time range mismatch between weather and streamflow extractions
-    * Weather data ends ~29 hours before latest streamflow data
-    * flood_model uses INNER JOIN, so only hours with BOTH streamflow AND weather are included
-    * This is expected behavior - 15% of streamflow hours lack weather data due to extraction timing
-    * Note: Open-Meteo uses the archive API which doesn't include current day data
-    * To get current/today's weather, need to use the forecast API instead of archive
-    * See: https://open-meteo.com/en/docs (forecast) vs https://open-meteo.com/en/docs/historical-weather-api (archive)
+    * Added stg_streamflow_daily staging model
+    * Added fct_streamflow_daily mart model (daily weather aggregation)
+    * Added flood_model_daily for sites with only daily data (1-day ahead targets)
+    * Site coverage expanded from ~1,300 (IV only) to ~2,700 (IV + daily)
 
 Columns missing compared to CAMELSH:
     * Specific Humidity
