@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flood Forecasting - Full Architecture</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { darkMode: 'class' }
+  </script>
+  <style>
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
+    .node { transition: all 0.2s ease; }
+    .node:hover { transform: scale(1.03); z-index: 100; }
+    .node.selected { box-shadow: 0 0 0 3px #6366f1; transform: scale(1.05); z-index: 100; }
+    .node.future { border-style: dashed; opacity: 0.7; }
+    @keyframes flow {
+      0% { stroke-dashoffset: 20; }
+      100% { stroke-dashoffset: 0; }
+    }
+    .flow-line { stroke-dasharray: 5 5; animation: flow 1s linear infinite; }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 0.8; }
+    }
+    .pulse-line { animation: pulse 2s ease-in-out infinite; }
+    .parallel-badge {
+      background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);
+    }
+    .orchestration-zone {
+      background: linear-gradient(90deg, rgba(139, 92, 246, 0.08) 0%, rgba(139, 92, 246, 0.02) 100%);
+      border-left: 3px solid #8b5cf6;
+    }
+    .icon-img { width: 20px; height: 20px; object-fit: contain; }
+    .icon-img-sm { width: 16px; height: 16px; object-fit: contain; }
+    .icon-img-lg { width: 24px; height: 24px; object-fit: contain; }
+  </style>
+</head>
+<body class="dark">
+  <div id="app" class="flex flex-col h-screen bg-slate-900 text-slate-100">
+
+    <!-- Header -->
+    <header class="bg-slate-800 border-b border-slate-700 p-4 flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <div class="p-2 bg-gradient-to-br from-blue-600 to-cyan-500 rounded-lg">
+          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-xl font-bold bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">
+            Flood Forecasting Pipeline
+          </h1>
+          <p class="text-sm text-slate-400">End-to-end MLOps Architecture</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-4">
+        <div class="hidden md:flex items-center gap-2 text-xs">
+          <span class="px-2 py-1 rounded bg-slate-700 text-slate-300">Current</span>
+          <span class="px-2 py-1 rounded border border-dashed border-slate-600 text-slate-400">Planned</span>
+        </div>
+        <div class="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-full border border-slate-700">
+          <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+          <span class="text-xs font-mono text-slate-400">ACTIVE</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="flex flex-1 overflow-hidden">
+
+      <!-- Left: Diagram -->
+      <div class="flex-1 relative overflow-auto bg-slate-950/50">
+
+        <!-- Phase Labels - Absolutely positioned to align with columns -->
+        <div class="sticky top-0 z-20 bg-slate-900/90 backdrop-blur border-b border-slate-800 py-3">
+          <div class="relative text-xs font-bold uppercase tracking-widest" style="min-width: 1600px; height: 24px;">
+            <div class="absolute text-blue-400 flex items-center gap-2" style="left: 52px;">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+              </svg>
+              Extraction
+            </div>
+            <div class="absolute text-indigo-400 flex items-center gap-2" style="left: 262px;">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
+              </svg>
+              Storage
+            </div>
+            <div class="absolute text-orange-400 flex items-center gap-2" style="left: 500px;">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+              </svg>
+              Transform
+            </div>
+            <div class="absolute text-yellow-400 flex items-center gap-2" style="left: 850px;">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+              </svg>
+              Model Development
+              <span class="parallel-badge text-white text-[10px] px-1.5 py-0.5 rounded-full font-medium">PARALLEL</span>
+            </div>
+            <div class="absolute text-emerald-400 flex items-center gap-2" style="left: 1240px;">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"/>
+              </svg>
+              Deployment
+            </div>
+            <div class="absolute text-pink-400 flex items-center gap-2" style="left: 1400px;">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+              </svg>
+              Monitoring
+            </div>
+          </div>
+        </div>
+
+        <!-- Diagram Container -->
+        <div class="relative p-6" style="min-width: 1400px; min-height: 550px;">
+
+          <!-- Dagster Orchestration Zone -->
+          <div class="orchestration-zone absolute rounded-r-xl" style="left: 0; top: 10px; width: 700px; height: 450px;">
+            <div class="absolute left-3 top-3 flex items-center gap-2">
+              <img src="https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/dagster-dark.webp" class="icon-img" alt="Dagster">
+              <span class="text-xs font-bold text-purple-400 uppercase tracking-wider">Dagster Orchestration</span>
+            </div>
+          </div>
+
+          <!-- SVG Connections -->
+          <svg class="absolute top-0 left-0 w-full h-full pointer-events-none" style="z-index: 0;">
+            <!-- Extraction to Storage -->
+            <path class="flow-line" d="M 248 100 C 280 100, 280 100, 300 100" stroke="#3b82f6" stroke-width="2" fill="none" opacity="0.5"/>
+            <path class="flow-line" d="M 248 200 C 280 200, 280 200, 300 200" stroke="#f97316" stroke-width="2" fill="none" opacity="0.5"/>
+            <path class="flow-line" d="M 248 300 C 280 300, 280 300, 300 300" stroke="#22c55e" stroke-width="2" fill="none" opacity="0.5"/>
+
+            <!-- Storage to Transform -->
+            <path class="flow-line" d="M 470 100 C 510 100, 510 150, 540 150" stroke="#3b82f6" stroke-width="2" fill="none" opacity="0.5"/>
+            <path class="flow-line" d="M 470 200 C 510 200, 510 150, 540 150" stroke="#f97316" stroke-width="2" fill="none" opacity="0.5"/>
+            <path class="flow-line" d="M 470 300 C 510 300, 510 300, 540 300" stroke="#22c55e" stroke-width="2" fill="none" opacity="0.5"/>
+
+            <!-- Transform to Data Contract -->
+            <path class="flow-line" d="M 710 150 C 750 150, 750 220, 770 220" stroke="#f97316" stroke-width="2" fill="none" opacity="0.5"/>
+            <path class="flow-line" d="M 710 300 C 750 300, 750 220, 770 220" stroke="#22c55e" stroke-width="2" fill="none" opacity="0.5"/>
+
+            <!-- Data Contract to Model Experiments (parallel branches) -->
+            <path class="pulse-line" d="M 825 220 C 860 220, 860 80, 890 80" stroke="#eab308" stroke-width="2" fill="none" opacity="0.6"/>
+            <path class="pulse-line" d="M 825 220 C 860 220, 860 170, 890 170" stroke="#eab308" stroke-width="2" fill="none" opacity="0.6"/>
+            <path class="pulse-line" d="M 825 220 C 860 220, 860 260, 890 260" stroke="#eab308" stroke-width="2" fill="none" opacity="0.6"/>
+            <path class="pulse-line" d="M 825 220 C 860 220, 860 350, 890 350" stroke="#eab308" stroke-width="2" fill="none" opacity="0.6"/>
+
+            <!-- Model Experiments to W&B -->
+            <path class="pulse-line" d="M 1070 80 C 1100 80, 1100 170, 1110 170" stroke="#eab308" stroke-width="2" fill="none" opacity="0.4"/>
+            <path class="pulse-line" d="M 1070 170 C 1090 170, 1090 170, 1110 170" stroke="#eab308" stroke-width="2" fill="none" opacity="0.4"/>
+            <path class="pulse-line" d="M 1070 260 C 1100 260, 1100 170, 1110 170" stroke="#eab308" stroke-width="2" fill="none" opacity="0.4"/>
+            <path class="pulse-line" d="M 1070 350 C 1100 350, 1100 170, 1110 170" stroke="#eab308" stroke-width="2" fill="none" opacity="0.4"/>
+
+            <!-- W&B to Deployment -->
+            <path class="flow-line" d="M 1200 170 C 1230 170, 1230 170, 1250 170" stroke="#10b981" stroke-width="2" fill="none" opacity="0.3"/>
+
+            <!-- Model Registry to Batch -->
+            <path class="flow-line" d="M 1200 270 C 1230 270, 1230 290, 1250 290" stroke="#10b981" stroke-width="2" fill="none" opacity="0.3"/>
+
+            <!-- Deployment to Monitoring -->
+            <path class="flow-line" d="M 1400 170 C 1430 170, 1430 170, 1450 170" stroke="#ec4899" stroke-width="2" fill="none" opacity="0.3"/>
+            <path class="flow-line" d="M 1400 290 C 1430 290, 1430 290, 1450 290" stroke="#ec4899" stroke-width="2" fill="none" opacity="0.3"/>
+          </svg>
+
+          <!-- Nodes -->
+          <div class="relative" style="z-index: 10;">
+
+            <!-- EXTRACTION COLUMN -->
+            <div class="node absolute cursor-pointer bg-slate-800 rounded-lg border-l-4 border-blue-500 p-3 w-48 shadow-lg" style="left: 52px; top: 60px;" onclick="selectNode('usgs_api')">
+              <div class="flex items-center gap-2 mb-1">
+                <div class="w-6 h-6 rounded bg-blue-500/20 flex items-center justify-center">
+                  <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/>
+                  </svg>
+                </div>
+                <span class="text-xs font-bold text-slate-400 uppercase">Extract</span>
+              </div>
+              <div class="text-sm font-semibold">USGS NWIS API</div>
+              <div class="text-xs text-slate-500 mt-1">Streamflow data</div>
+            </div>
+
+            <div class="node absolute cursor-pointer bg-slate-800 rounded-lg border-l-4 border-orange-500 p-3 w-48 shadow-lg" style="left: 52px; top: 160px;" onclick="selectNode('openmeteo_api')">
+              <div class="flex items-center gap-2 mb-1">
+                <div class="w-6 h-6 rounded bg-orange-500/20 flex items-center justify-center">
+                  <svg class="w-4 h-4 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"/>
+                  </svg>
+                </div>
+                <span class="text-xs font-bold text-slate-400 uppercase">Extract</span>
+              </div>
+              <div class="text-sm font-semibold">Open-Meteo API</div>
+              <div class="text-xs text-slate-500 mt-1">Weather forcing</div>
+            </div>
+
+            <div class="node absolute cursor-pointer bg-slate-800 rounded-lg border-l-4 border-green-500 p-3 w-48 shadow-lg" style="left: 52px; top: 260px;" onclick="selectNode('static_seeds')">
+              <div class="flex items-center gap-2 mb-1">
+                <div class="w-6 h-6 rounded bg-green-500/20 flex items-center justify-center">
+                  <svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                  </svg>
+                </div>
+                <span class="text-xs font-bold text-slate-400 uppercase">Seed</span>
+              </div>
+              <div class="text-sm font-semibold">Static Attributes</div>
+              <div class="text-xs text-slate-500 mt-1">CAMELS/GAGES-II</div>
+            </div>
+
+            <!-- STORAGE COLUMN -->
+            <div class="node absolute cursor-pointer bg-slate-800 rounded-lg border-l-4 border-blue-500 p-3 w-44 shadow-lg" style="left: 262px; top: 60px;" onclick="selectNode('raw_streamflow')">
+              <div class="text-xs font-bold text-slate-400 uppercase mb-1">Raw</div>
+              <div class="text-sm font-semibold">streamflow_*</div>
+              <div class="text-xs text-slate-500 mt-1">15-min + daily</div>
+            </div>
+
+            <div class="node absolute cursor-pointer bg-slate-800 rounded-lg border-l-4 border-orange-500 p-3 w-44 shadow-lg" style="left: 262px; top: 160px;" onclick="selectNode('raw_weather')">
+              <div class="text-xs font-bold text-slate-400 uppercase mb-1">Raw</div>
+              <div class="text-sm font-semibold">weather_forcing</div>
+              <div class="text-xs text-slate-500 mt-1">Hourly weather</div>
+            </div>
+
+            <div class="node absolute cursor-pointer bg-slate-800 rounded-lg border-l-4 border-green-500 p-3 w-44 shadow-lg" style="left: 262px; top: 260px;" onclick="selectNode('raw_attributes')">
+              <div class="text-xs font-bold text-slate-400 uppercase mb-1">Seeds</div>
+              <div class="text-sm font-semibold">catchment_attrs</div>
+              <div class="text-xs text-slate-500 mt-1">439+ features</div>
+            </div>
+
+            <!-- DuckDB indicator -->
+            <div class="absolute flex items-center gap-1.5 text-xs text-yellow-400 font-medium" style="left: 262px; top: 360px;">
+              <img src="https://duckdb.org/images/logo-dl/DuckDB_Logo.png" class="icon-img" alt="DuckDB">
+              DuckDB
+            </div>
+
+            <!-- TRANSFORM COLUMN -->
+            <div class="node absolute cursor-pointer bg-slate-800 rounded-lg border-l-4 border-orange-500 p-3 w-44 shadow-lg" style="left: 500px; top: 110px;" onclick="selectNode('fct_hourly')">
+              <div class="text-xs font-bold text-slate-400 uppercase mb-1">Mart</div>
+              <div class="text-sm font-semibold">fct_streamflow</div>
+              <div class="text-xs text-slate-500 mt-1">Hourly aggregated</div>
+            </div>
+
+            <div class="node absolute cursor-pointer bg-slate-800 rounded-lg border-l-4 border-green-500 p-3 w-44 shadow-lg" style="left: 500px; top: 260px;" onclick="selectNode('dim_catchment')">
+              <div class="text-xs font-bold text-slate-400 uppercase mb-1">Mart</div>
+              <div class="text-sm font-semibold">dim_catchment</div>
+              <div class="text-xs text-slate-500 mt-1">Feature store</div>
+            </div>
+
+            <!-- dbt indicator -->
+            <div class="absolute flex items-center gap-1.5 text-xs text-orange-500 font-medium" style="left: 500px; top: 360px;">
+              <img src="https://seeklogo.com/images/D/dbt-logo-500AB0BAA7-seeklogo.com.png" class="icon-img" alt="dbt">
+              dbt
+            </div>
+
+            <!-- DATA CONTRACT (Key junction point) -->
+            <div class="node absolute cursor-pointer bg-gradient-to-br from-slate-800 to-slate-700 rounded-lg border-2 border-yellow-500 p-3 w-40 shadow-lg" style="left: 690px; top: 180px;" onclick="selectNode('flood_model')">
+              <div class="text-xs font-bold text-yellow-400 uppercase mb-1 flex items-center gap-1">
+                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+                </svg>
+                Contract
+              </div>
+              <div class="text-sm font-semibold">flood_model</div>
+              <div class="text-xs text-slate-400 mt-1">ML-ready table</div>
+            </div>
+
+            <!-- MODEL DEVELOPMENT COLUMN (Parallel) -->
+            <div class="absolute bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3" style="left: 850px; top: 30px; width: 220px; height: 380px;">
+              <div class="text-xs font-bold text-yellow-400 uppercase mb-3 flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                Parallel Development
+              </div>
+
+              <div class="node cursor-pointer bg-slate-800 rounded-lg border-l-4 border-yellow-500 p-2 w-full shadow-md mb-2" onclick="selectNode('exp_lstm')">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <img src="https://pytorch.org/assets/images/pytorch-logo.png" class="icon-img-sm" alt="PyTorch">
+                    <div>
+                      <div class="text-xs font-semibold">LSTM Baseline</div>
+                      <div class="text-[10px] text-slate-500">Developer A</div>
+                    </div>
+                  </div>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">Active</span>
+                </div>
+              </div>
+
+              <div class="node cursor-pointer bg-slate-800 rounded-lg border-l-4 border-yellow-500 p-2 w-full shadow-md mb-2" onclick="selectNode('exp_transformer')">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <img src="https://pytorch.org/assets/images/pytorch-logo.png" class="icon-img-sm" alt="PyTorch">
+                    <div>
+                      <div class="text-xs font-semibold">Transformer</div>
+                      <div class="text-[10px] text-slate-500">Developer B</div>
+                    </div>
+                  </div>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-400">Active</span>
+                </div>
+              </div>
+
+              <div class="node cursor-pointer bg-slate-800 rounded-lg border-l-4 border-yellow-500 p-2 w-full shadow-md mb-2" onclick="selectNode('exp_keras')">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/a/ae/Keras_logo.svg" class="icon-img-sm" alt="Keras">
+                    <div>
+                      <div class="text-xs font-semibold">Keras Models</div>
+                      <div class="text-[10px] text-slate-500">Developer C</div>
+                    </div>
+                  </div>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">Planned</span>
+                </div>
+              </div>
+
+              <div class="node cursor-pointer bg-slate-800 rounded-lg border-l-4 border-yellow-500 p-2 w-full shadow-md" onclick="selectNode('exp_ensemble')">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <img src="https://upload.wikimedia.org/wikipedia/commons/0/05/Scikit_learn_logo_small.svg" class="icon-img-sm" alt="sklearn">
+                    <div>
+                      <div class="text-xs font-semibold">Ensemble Methods</div>
+                      <div class="text-[10px] text-slate-500">Developer D</div>
+                    </div>
+                  </div>
+                  <span class="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400">Planned</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- W&B Tracking -->
+            <div class="node absolute cursor-pointer bg-slate-800 rounded-lg border-l-4 border-yellow-500 p-3 w-40 shadow-lg" style="left: 1080px; top: 130px;" onclick="selectNode('wandb')">
+              <div class="flex items-center gap-2 mb-1">
+                <img src="https://wandb.ai/logo.svg" class="icon-img" alt="W&B" onerror="this.src='https://assets.website-files.com/5ac6b7f2924c652fd013a891/5dd0b8a5e7f1e638e90e99f7_wandb-logo.svg'">
+                <div>
+                  <div class="text-xs font-bold text-yellow-400 uppercase">Tracking</div>
+                </div>
+              </div>
+              <div class="text-sm font-semibold">Weights & Biases</div>
+              <div class="text-xs text-slate-500 mt-1">Experiment logs</div>
+            </div>
+
+            <!-- Model Registry -->
+            <div class="node absolute cursor-pointer bg-slate-800 rounded-lg border-l-4 border-yellow-500 p-3 w-40 shadow-lg" style="left: 1080px; top: 230px;" onclick="selectNode('model_registry')">
+              <div class="text-xs font-bold text-yellow-400 uppercase mb-1">Registry</div>
+              <div class="text-sm font-semibold">Model Artifacts</div>
+              <div class="text-xs text-slate-500 mt-1">Versioned models</div>
+            </div>
+
+            <!-- DEPLOYMENT COLUMN (Future) -->
+            <div class="node future absolute cursor-pointer bg-slate-800/60 rounded-lg border-l-4 border-emerald-500 p-3 w-40 shadow-lg" style="left: 1240px; top: 130px;" onclick="selectNode('inference_api')">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="text-xs font-bold text-emerald-400 uppercase">API</span>
+              </div>
+              <div class="text-sm font-semibold">Inference Service</div>
+              <div class="text-xs text-slate-500 mt-1">FastAPI</div>
+            </div>
+
+            <div class="node future absolute cursor-pointer bg-slate-800/60 rounded-lg border-l-4 border-emerald-500 p-3 w-40 shadow-lg" style="left: 1240px; top: 250px;" onclick="selectNode('batch_predict')">
+              <div class="text-xs font-bold text-emerald-400 uppercase mb-1">Batch</div>
+              <div class="text-sm font-semibold">Scheduled Jobs</div>
+              <div class="text-xs text-slate-500 mt-1">Daily forecasts</div>
+            </div>
+
+            <!-- MONITORING COLUMN (Future) -->
+            <div class="node future absolute cursor-pointer bg-slate-800/60 rounded-lg border-l-4 border-pink-500 p-3 w-44 shadow-lg" style="left: 1400px; top: 130px;" onclick="selectNode('dashboard')">
+              <div class="flex items-center gap-2 mb-1">
+                <img src="https://streamlit.io/images/brand/streamlit-mark-color.svg" class="icon-img-sm" alt="Streamlit">
+                <span class="text-xs font-bold text-pink-400 uppercase">UI</span>
+              </div>
+              <div class="text-sm font-semibold">Flood Dashboard</div>
+              <div class="text-xs text-slate-500 mt-1">Streamlit + Maps</div>
+            </div>
+
+            <div class="node future absolute cursor-pointer bg-slate-800/60 rounded-lg border-l-4 border-pink-500 p-3 w-44 shadow-lg" style="left: 1400px; top: 250px;" onclick="selectNode('model_monitoring')">
+              <div class="text-xs font-bold text-pink-400 uppercase mb-1">MLOps</div>
+              <div class="text-sm font-semibold">Model Monitoring</div>
+              <div class="text-xs text-slate-500 mt-1">Drift detection</div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Detail Panel -->
+      <div id="detail-panel" class="w-[400px] bg-slate-900 border-l border-slate-700 overflow-y-auto flex-shrink-0">
+        <div class="h-full flex flex-col items-center justify-center text-slate-400 p-8 text-center">
+          <svg class="w-16 h-16 mb-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+          </svg>
+          <p class="text-lg font-medium mb-2">Select a Component</p>
+          <p class="text-sm">Click any node in the pipeline to view details, statistics, and documentation.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Tool icon URLs
+    const toolIcons = {
+      dagster: 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/dagster-dark.webp',
+      polars: 'Polars Data/Polars Data_idmpHUSoXr_0.png',
+      dbt: 'https://seeklogo.com/images/D/dbt-logo-500AB0BAA7-seeklogo.com.png',
+      duckdb: 'https://duckdb.org/images/logo-dl/DuckDB_Logo.png',
+      pytorch: 'https://pytorch.org/assets/images/pytorch-logo.png',
+      keras: 'https://upload.wikimedia.org/wikipedia/commons/a/ae/Keras_logo.svg',
+      sklearn: 'https://upload.wikimedia.org/wikipedia/commons/0/05/Scikit_learn_logo_small.svg',
+      wandb: 'https://assets.website-files.com/5ac6b7f2924c652fd013a891/5dd0b8a5e7f1e638e90e99f7_wandb-logo.svg',
+      streamlit: 'https://streamlit.io/images/brand/streamlit-mark-color.svg',
+      fastapi: 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/webp/fastapi.webp'
+    };
+
+    const nodeData = {
+      // EXTRACTION
+      usgs_api: {
+        title: 'USGS NWIS API',
+        phase: 'Extraction',
+        type: 'Data Source',
+        tech: ['dagster', 'polars'],
+        color: 'blue',
+        status: 'active',
+        description: 'The primary source for hydrological data. Queries the USGS OGC API for site metadata and discharge observations across the Missouri River Basin (HUC 10).',
+        stats: [
+          { label: 'Grain', value: 'Sites in HUC 10' },
+          { label: 'Sites discovered', value: '12,621' },
+          { label: 'Sites with discharge', value: '3,860 (~31%)' },
+          { label: 'IV sites (15-min)', value: '1,311' },
+          { label: 'Daily sites', value: '2,656' },
+          { label: 'Update frequency', value: 'Incremental' }
+        ],
+        code: 'elt/extraction/usgs.py'
+      },
+      openmeteo_api: {
+        title: 'Open-Meteo API',
+        phase: 'Extraction',
+        type: 'Data Source',
+        tech: ['dagster', 'polars'],
+        color: 'orange',
+        status: 'active',
+        description: 'Historical weather forcing data provider. Fetches hourly meteorological variables for each USGS site location using latitude/longitude coordinates.',
+        stats: [
+          { label: 'Grain', value: 'Lat/lon + hour' },
+          { label: 'Resolution', value: 'Hourly' },
+          { label: 'Variables', value: '11 (precip, temp, humidity, wind, radiation, pressure, ET)' },
+          { label: 'Coverage', value: '100% of site locations' },
+          { label: 'Update frequency', value: 'Incremental' }
+        ],
+        code: 'elt/extraction/weather.py'
+      },
+      static_seeds: {
+        title: 'Static Attributes (CAMELS)',
+        phase: 'Extraction',
+        type: 'Seed Data',
+        tech: ['dbt'],
+        color: 'green',
+        status: 'active',
+        description: 'Pre-computed watershed characteristics from GAGES-II, HydroATLAS, and NLDAS-2. These static features enable the model to learn basin-specific responses.',
+        stats: [
+          { label: 'Grain', value: 'One row per site_id' },
+          { label: 'Row count', value: '~9,009 sites per seed' },
+          { label: 'Seed files', value: '28 (GAGES-II, HydroATLAS, NLDAS)' },
+          { label: 'Attribute categories', value: 'Geology, Soils, Topo, Climate' },
+          { label: 'Update frequency', value: 'Static (one-time load)' }
+        ],
+        code: 'elt/transformation/seeds/'
+      },
+
+      // STORAGE
+      raw_streamflow: {
+        title: 'Raw Streamflow Tables',
+        phase: 'Storage',
+        type: 'Raw Layer',
+        tech: ['duckdb'],
+        color: 'blue',
+        status: 'active',
+        description: 'Raw discharge observations stored directly from USGS. Separate tables for 15-minute instantaneous values (IV) and daily mean values.',
+        stats: [
+          { label: 'Tables', value: 'streamflow_15min, streamflow_daily' },
+          { label: 'Grain', value: 'site_id + timestamp (IV) or site_id + date (daily)' },
+          { label: 'Primary key', value: 'site_id + datetime (IV); site_id + date (daily)' },
+          { label: 'Row count', value: 'Varies by extraction date range and sites' }
+        ]
+      },
+      raw_weather: {
+        title: 'Raw Weather Forcing',
+        phase: 'Storage',
+        type: 'Raw Layer',
+        tech: ['duckdb'],
+        color: 'orange',
+        status: 'active',
+        description: 'Hourly weather data stored by location. Joined to streamflow via site coordinates during transformation.',
+        stats: [
+          { label: 'Table', value: 'weather_forcing' },
+          { label: 'Grain', value: 'latitude + longitude + datetime' },
+          { label: 'Primary key', value: 'lat, lon, datetime' },
+          { label: 'Variables', value: '11 (prcp, temp, humidity, wind, rsds, rlds, psurf, pet)' },
+          { label: 'Row count', value: 'Varies by extraction date range and sites' }
+        ]
+      },
+      raw_attributes: {
+        title: 'Catchment Attributes (Seeds)',
+        phase: 'Storage',
+        type: 'Seed Layer',
+        tech: ['duckdb'],
+        color: 'green',
+        status: 'active',
+        description: 'Static CSV files loaded via dbt seeds. Normalized into staging views for downstream joins.',
+        stats: [
+          { label: 'Grain', value: 'One row per site_id' },
+          { label: 'Row count', value: '~9,009 rows per seed' },
+          { label: 'Seed files', value: '28' },
+          { label: 'Join key', value: 'site_id (USGS gauge ID)' }
+        ]
+      },
+
+      // TRANSFORM
+      fct_hourly: {
+        title: 'fct_streamflow_hourly',
+        phase: 'Transform',
+        type: 'Fact Table',
+        tech: ['dbt', 'duckdb'],
+        color: 'orange',
+        status: 'active',
+        description: 'Critical aggregation step: 15-minute streamflow is averaged to hourly to match weather resolution. Weather forcing is joined here via coordinates.',
+        stats: [
+          { label: 'Grain', value: 'site_id + observation_hour' },
+          { label: 'Input grain', value: '15-min (IV) or daily' },
+          { label: 'Aggregations', value: 'AVG, MAX, MIN (cfs, gage_height)' },
+          { label: 'Weather join', value: 'Lat/lon + hour' },
+          { label: 'Row count', value: 'Varies by streamflow and weather extraction' }
+        ],
+        code: 'elt/transformation/models/marts/fct_streamflow_hourly.sql'
+      },
+      dim_catchment: {
+        title: 'dim_catchment_attributes',
+        phase: 'Transform',
+        type: 'Dimension Table',
+        tech: ['dbt', 'duckdb'],
+        color: 'green',
+        status: 'active',
+        description: 'Wide table joining all static attributes into a single feature store. Acts as the lookup table for physical basin characteristics.',
+        stats: [
+          { label: 'Grain', value: 'One row per site_id' },
+          { label: 'Column count', value: '~40 (selected from seeds)' },
+          { label: 'Source tables', value: '7 (sites, basin, topo, soils, geology, climate, hydroatlas)' },
+          { label: 'Join key', value: 'site_id' }
+        ],
+        code: 'elt/transformation/models/marts/dim_catchment_attributes.sql'
+      },
+      flood_model: {
+        title: 'flood_model (Data Contract)',
+        phase: 'Transform',
+        type: 'Final Table',
+        tech: ['dbt', 'duckdb'],
+        color: 'yellow',
+        status: 'active',
+        description: 'The ML-ready training dataset. This table serves as a stable data contract between data engineering and ML teams.',
+        stats: [
+          { label: 'Grain', value: 'site_id + observation_hour' },
+          { label: 'Primary key', value: 'site_id + observation_hour' },
+          { label: 'Target variable', value: 'LEAD(streamflow_cfs_mean, 1) — 1-hour ahead' },
+          { label: 'Feature groups', value: 'Flow(t), Weather(t), Static attributes' },
+          { label: 'Row count', value: 'Varies by fct_streamflow_hourly and site coverage' }
+        ],
+        code: 'elt/transformation/models/final/flood_model.sql'
+      },
+
+      // MODEL DEVELOPMENT
+      exp_lstm: {
+        title: 'LSTM Baseline',
+        phase: 'Model Development',
+        type: 'Experiment',
+        tech: ['pytorch', 'wandb'],
+        color: 'yellow',
+        status: 'active',
+        developer: 'Developer A',
+        description: 'Classic LSTM architecture for sequence-to-sequence forecasting. Serves as the baseline model that other architectures must beat.',
+        stats: [
+          { label: 'Architecture', value: '2-layer LSTM, 256 hidden' },
+          { label: 'Input window', value: '168 hours (7 days)' },
+          { label: 'Forecast horizon', value: '24 hours' },
+          { label: 'Status', value: 'Training in progress' }
+        ]
+      },
+      exp_transformer: {
+        title: 'Temporal Fusion Transformer',
+        phase: 'Model Development',
+        type: 'Experiment',
+        tech: ['pytorch', 'wandb'],
+        color: 'yellow',
+        status: 'active',
+        developer: 'Developer B',
+        description: 'Attention-based architecture that can capture long-range dependencies and provide interpretable attention weights for feature importance.',
+        stats: [
+          { label: 'Architecture', value: 'TFT with multi-head attention' },
+          { label: 'Static features', value: 'Encoded via embedding layers' },
+          { label: 'Interpretability', value: 'Attention visualization' },
+          { label: 'Status', value: 'Hyperparameter sweep' }
+        ]
+      },
+      exp_keras: {
+        title: 'Keras Models',
+        phase: 'Model Development',
+        type: 'Experiment',
+        tech: ['keras', 'wandb'],
+        color: 'yellow',
+        status: 'planned',
+        developer: 'Developer C',
+        description: 'Alternative deep learning implementations using Keras/TensorFlow for comparison and potential production deployment.',
+        stats: [
+          { label: 'Framework', value: 'TensorFlow / Keras' },
+          { label: 'Models', value: 'Conv1D, GRU, Seq2Seq' },
+          { label: 'Status', value: 'Planning phase' }
+        ]
+      },
+      exp_ensemble: {
+        title: 'Ensemble Methods',
+        phase: 'Model Development',
+        type: 'Experiment',
+        tech: ['sklearn', 'wandb'],
+        color: 'yellow',
+        status: 'planned',
+        developer: 'Developer D',
+        description: 'Traditional ML baselines using gradient boosting and random forests. Important for comparison and potentially useful in ensemble with deep learning models.',
+        stats: [
+          { label: 'Models', value: 'XGBoost, LightGBM, CatBoost' },
+          { label: 'Feature engineering', value: 'Lag features, rolling stats' },
+          { label: 'Use case', value: 'Baseline + ensemble member' },
+          { label: 'Status', value: 'Planning phase' }
+        ]
+      },
+      wandb: {
+        title: 'Weights & Biases',
+        phase: 'Model Development',
+        type: 'Experiment Tracking',
+        tech: ['wandb'],
+        color: 'yellow',
+        status: 'active',
+        description: 'Central experiment tracking platform. All model runs log metrics, hyperparameters, and artifacts here for comparison across developers and approaches.',
+        stats: [
+          { label: 'Tracked metrics', value: 'NSE, RMSE, MAE, KGE' },
+          { label: 'Artifacts', value: 'Model checkpoints, configs' },
+          { label: 'Sweeps', value: 'Bayesian hyperparameter search' },
+          { label: 'Collaboration', value: 'Shared project dashboard' }
+        ]
+      },
+      model_registry: {
+        title: 'Model Registry',
+        phase: 'Model Development',
+        type: 'Artifact Storage',
+        tech: ['wandb'],
+        color: 'yellow',
+        status: 'active',
+        description: 'Versioned storage for production-ready models. Best performing models are promoted here with full lineage tracking.',
+        stats: [
+          { label: 'Versioning', value: 'Semantic (v1.0.0)' },
+          { label: 'Lineage', value: 'Full training config + data version' },
+          { label: 'Promotion', value: 'Dev → Staging → Prod' }
+        ]
+      },
+
+      // DEPLOYMENT (Future)
+      inference_api: {
+        title: 'Inference API',
+        phase: 'Deployment',
+        type: 'Service',
+        tech: 'FastAPI',
+        color: 'emerald',
+        status: 'planned',
+        description: 'Real-time prediction endpoint. Receives location coordinates and current/forecast weather, returns streamflow predictions.',
+        stats: [
+          { label: 'Input', value: 'Lat/lon + weather forecast' },
+          { label: 'Output', value: '24-hour streamflow forecast' },
+          { label: 'Latency target', value: '< 100ms p99' }
+        ]
+      },
+      batch_predict: {
+        title: 'Batch Prediction Jobs',
+        phase: 'Deployment',
+        type: 'Scheduled Job',
+        tech: 'Dagster',
+        color: 'emerald',
+        status: 'planned',
+        description: 'Daily scheduled predictions for all monitored sites. Results stored in database for dashboard consumption.',
+        stats: [
+          { label: 'Schedule', value: 'Every 6 hours' },
+          { label: 'Coverage', value: 'All active sites' },
+          { label: 'Output', value: 'Predictions table in DuckDB' }
+        ]
+      },
+
+      // MONITORING (Future)
+      dashboard: {
+        title: 'Flood Risk Dashboard',
+        phase: 'Monitoring',
+        type: 'Web UI',
+        tech: 'Streamlit + Mapbox',
+        color: 'pink',
+        status: 'planned',
+        description: 'Interactive map showing current flood risk levels across the Missouri Basin. Color-coded risk indicators with drill-down to individual sites.',
+        stats: [
+          { label: 'Visualization', value: 'Interactive map + time series' },
+          { label: 'Risk levels', value: 'Low / Medium / High / Critical' },
+          { label: 'Historical', value: 'Past predictions vs actuals' }
+        ]
+      },
+      model_monitoring: {
+        title: 'Model Performance Monitoring',
+        phase: 'Monitoring',
+        type: 'MLOps',
+        tech: 'Evidently + Grafana',
+        color: 'pink',
+        status: 'planned',
+        description: 'Continuous monitoring of model predictions vs actuals. Detects data drift and model degradation to trigger retraining.',
+        stats: [
+          { label: 'Metrics', value: 'Prediction error, data drift' },
+          { label: 'Alerts', value: 'Slack notifications' },
+          { label: 'Retraining', value: 'Automated trigger' }
+        ]
+      }
+    };
+
+    const colorClasses = {
+      blue: { bg: 'bg-blue-500', header: 'bg-blue-500', badge: 'bg-blue-900/30 text-blue-300' },
+      orange: { bg: 'bg-orange-500', header: 'bg-orange-500', badge: 'bg-orange-900/30 text-orange-300' },
+      green: { bg: 'bg-green-500', header: 'bg-green-500', badge: 'bg-green-900/30 text-green-300' },
+      yellow: { bg: 'bg-yellow-500', header: 'bg-yellow-500', badge: 'bg-yellow-900/30 text-yellow-300' },
+      emerald: { bg: 'bg-emerald-500', header: 'bg-emerald-500', badge: 'bg-emerald-900/30 text-emerald-300' },
+      pink: { bg: 'bg-pink-500', header: 'bg-pink-500', badge: 'bg-pink-900/30 text-pink-300' }
+    };
+
+    let selectedNodeId = null;
+
+    function selectNode(nodeId) {
+      document.querySelectorAll('.node').forEach(el => el.classList.remove('selected'));
+      if (event && event.currentTarget) {
+        event.currentTarget.classList.add('selected');
+      }
+      selectedNodeId = nodeId;
+
+      const data = nodeData[nodeId];
+      const colors = colorClasses[data.color];
+
+      const statusBadge = data.status === 'active'
+        ? '<span class="px-2 py-0.5 rounded text-xs bg-green-900/30 text-green-400">Active</span>'
+        : '<span class="px-2 py-0.5 rounded text-xs bg-slate-700 text-slate-400">Planned</span>';
+
+      const panel = document.getElementById('detail-panel');
+      panel.innerHTML = `
+        <div class="h-1.5 w-full ${colors.header}"></div>
+        <div class="p-6">
+          <!-- Header -->
+          <div class="flex items-start justify-between mb-4">
+            <div>
+              <h2 class="text-xl font-bold text-white">${data.title}</h2>
+              <div class="flex items-center gap-2 mt-1">
+                <span class="text-xs text-slate-400">${data.phase}</span>
+                <span class="text-slate-600">•</span>
+                <span class="text-xs text-slate-400">${data.type}</span>
+              </div>
+            </div>
+            ${statusBadge}
+          </div>
+
+          <!-- Tech Badge -->
+          <div class="mb-4 flex items-center gap-2">
+            <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            <span class="px-2 py-0.5 rounded text-xs bg-indigo-900/30 text-indigo-300">${data.tech}</span>
+            ${data.developer ? `<span class="px-2 py-0.5 rounded text-xs bg-purple-900/30 text-purple-300">${data.developer}</span>` : ''}
+          </div>
+
+          <!-- Description -->
+          <p class="text-slate-300 mb-6 leading-relaxed text-sm">${data.description}</p>
+
+          <!-- Stats -->
+          <div class="space-y-4">
+            <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-700 pb-2">
+              Details
+            </h3>
+            <div class="grid grid-cols-1 gap-2">
+              ${data.stats.map(stat => `
+                <div class="flex justify-between items-center p-2.5 bg-slate-800/50 rounded border border-slate-700/50">
+                  <span class="text-xs text-slate-400">${stat.label}</span>
+                  <span class="text-xs font-mono font-medium text-slate-200">${stat.value}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+
+          ${data.code ? `
+            <div class="mt-6 p-3 bg-slate-800 rounded border border-slate-700">
+              <div class="flex items-center gap-2 text-xs text-slate-400 mb-1">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
+                </svg>
+                Source Code
+              </div>
+              <code class="text-xs text-cyan-300 font-mono">${data.code}</code>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+  </script>
+</body>
+</html>
