@@ -1,0 +1,34 @@
+# Full reload configuration for 17-year historical data extraction
+# Fetches data from 2007-10-01 (USGS IV availability) to present
+#
+# Run with:
+#   uv run dagster job execute -m orchestration.definitions -j extraction_job -c run_config_full_reload.yaml
+
+ops:
+  usgs_site_metadata:
+    config:
+      sample_mode: false
+
+  usgs_streamflow_15min:
+    config:
+      sample_mode: false
+      days_back: 7300           # ~20 years (capped by min_date)
+      min_date: "2007-10-01"    # USGS IV data availability starts here
+      parallel_fetches: 5       # Concurrent API requests
+      time_window_days: 365     # Yearly batches for checkpointing
+
+  usgs_streamflow_daily:
+    config:
+      sample_mode: false
+      days_back: 7300
+      min_date: "2007-10-01"
+      parallel_fetches: 5
+      time_window_days: 365
+
+  weather_forcing_raw:
+    config:
+      sample_mode: false
+      days_back: 7300
+      min_date: "2007-10-01"
+      parallel_fetches: 1       # Keep low to avoid rate limits
+      time_window_days: 365

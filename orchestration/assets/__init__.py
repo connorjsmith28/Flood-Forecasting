@@ -5,6 +5,7 @@ from orchestration.assets.usgs_streamflow import usgs_streamflow_15min, usgs_str
 from orchestration.assets.weather_forcing import weather_forcing_raw
 from orchestration.assets.dbt import dbt_flood_forecasting
 from orchestration.assets.wandb_dataset import wandb_dataset
+from orchestration.assets.wandb_raw_tables import wandb_raw_tables
 
 __all__ = [
     "usgs_site_metadata",
@@ -13,4 +14,5 @@ __all__ = [
     "weather_forcing_raw",
     "dbt_flood_forecasting",
     "wandb_dataset",
+    "wandb_raw_tables",
 ]

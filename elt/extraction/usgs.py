@@ -1,5 +1,9 @@
 """USGS NWIS streamflow data extraction. Checkout the official USGS repo for examples: https://github.com/DOI-USGS/dataretrieval-python/blob/main/dataretrieval/nwis.py"""
 
+import threading
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import pandas as pd
 from dataretrieval import nwis
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
@@ -145,3 +149,128 @@ def fetch_usgs_daily(site_ids, start_date, end_date) -> pd.DataFrame:
     return df[[c for c in out_cols if c in df.columns]].reindex(columns=out_cols)
 
 
+# Rate limiting for parallel fetches
+_usgs_semaphore = threading.Semaphore(5)
+
+
+def fetch_usgs_streamflow_parallel(
+    site_ids: list[str],
+    start_date,
+    end_date,
+    batch_size: int = 20,
+    max_workers: int = 5,
+    log: Callable[[str], None] | None = None,
+) -> pd.DataFrame:
+    """Fetch 15-minute streamflow data with parallel site batches.
+
+    Args:
+        site_ids: List of USGS site IDs
+        start_date: Start date for data retrieval
+        end_date: End date for data retrieval
+        batch_size: Sites per batch (default: 20)
+        max_workers: Maximum concurrent API requests (default: 5)
+        log: Optional logging function
+
+    Returns:
+        DataFrame with streamflow data for all sites
+    """
+    chunks = [site_ids[i : i + batch_size] for i in range(0, len(site_ids), batch_size)]
+
+    if log:
+        log(f"Starting parallel USGS IV fetch: {len(site_ids)} sites, {len(chunks)} batches")
+
+    def fetch_batch_with_rate_limit(chunk_idx: int, batch: list[str]) -> pd.DataFrame:
+        # Limit to max 5 concurrent API calls
+        with _usgs_semaphore:
+            return fetch_usgs_streamflow(batch, start_date, end_date)
+
+    all_data: list[pd.DataFrame] = []
+    failed_batches = 0
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(fetch_batch_with_rate_limit, i, chunk): i
+            for i, chunk in enumerate(chunks)
+        }
+
+        for future in as_completed(futures):
+            chunk_idx = futures[future]
+            try:
+                df = future.result()
+                if not df.empty:
+                    all_data.append(df)
+                if log:
+                    log(f"Completed batch {chunk_idx + 1}/{len(chunks)}: {len(df)} records")
+            except Exception as e:
+                failed_batches += 1
+                if log:
+                    log(f"Batch {chunk_idx + 1}/{len(chunks)} failed: {e}")
+
+    if failed_batches > 0 and log:
+        log(f"Warning: {failed_batches}/{len(chunks)} batches failed")
+
+    if not all_data:
+        return pd.DataFrame()
+
+    return pd.concat(all_data, ignore_index=True)
+
+
+def fetch_usgs_daily_parallel(
+    site_ids: list[str],
+    start_date,
+    end_date,
+    batch_size: int = 50,
+    max_workers: int = 5,
+    log: Callable[[str], None] | None = None,
+) -> pd.DataFrame:
+    """Fetch daily streamflow data with parallel site batches.
+
+    Args:
+        site_ids: List of USGS site IDs
+        start_date: Start date for data retrieval
+        end_date: End date for data retrieval
+        batch_size: Sites per batch (default: 50)
+        max_workers: Maximum concurrent API requests (default: 5)
+        log: Optional logging function
+
+    Returns:
+        DataFrame with daily streamflow data for all sites
+    """
+    chunks = [site_ids[i : i + batch_size] for i in range(0, len(site_ids), batch_size)]
+
+    if log:
+        log(f"Starting parallel USGS DV fetch: {len(site_ids)} sites, {len(chunks)} batches")
+
+    def fetch_batch_with_rate_limit(chunk_idx: int, batch: list[str]) -> pd.DataFrame:
+        with _usgs_semaphore:
+            return fetch_usgs_daily(batch, start_date, end_date)
+
+    all_data: list[pd.DataFrame] = []
+    failed_batches = 0
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(fetch_batch_with_rate_limit, i, chunk): i
+            for i, chunk in enumerate(chunks)
+        }
+
+        for future in as_completed(futures):
+            chunk_idx = futures[future]
+            try:
+                df = future.result()
+                if not df.empty:
+                    all_data.append(df)
+                if log:
+                    log(f"Completed batch {chunk_idx + 1}/{len(chunks)}: {len(df)} records")
+            except Exception as e:
+                failed_batches += 1
+                if log:
+                    log(f"Batch {chunk_idx + 1}/{len(chunks)} failed: {e}")
+
+    if failed_batches > 0 and log:
+        log(f"Warning: {failed_batches}/{len(chunks)} batches failed")
+
+    if not all_data:
+        return pd.DataFrame()
+
+    return pd.concat(all_data, ignore_index=True)

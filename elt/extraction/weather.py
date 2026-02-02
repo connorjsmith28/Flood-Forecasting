@@ -1,8 +1,10 @@
 """Weather data extraction using Open-Meteo API. https://open-meteo.com/en/docs/historical-weather-api"""
 
 import logging
+import threading
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
 import openmeteo_requests
@@ -28,16 +30,23 @@ WEATHER_VARS = {
 }
 
 
-def _is_rate_limit_error(exc: BaseException) -> bool:
-    """Return True if the exception looks like an Open-Meteo rate limit error."""
+def _is_retryable_error(exc: BaseException) -> bool:
+    """Return True if the exception is retryable (rate limits, timeouts, transient errors)."""
+    # Retry any OpenMeteoRequestsError - these are all API-side issues
+    if isinstance(exc, openmeteo_requests.OpenMeteoRequestsError):
+        return True
+    # Also check for common transient error keywords
     err = str(exc).lower()
-    return any(t in err for t in ["rate limit", "limit exceeded", "too many requests", "try again"])
+    return any(
+        t in err
+        for t in ["rate limit", "limit exceeded", "too many requests", "try again", "timeout", "connection"]
+    )
 
 
 _retry = retry(
     stop=stop_after_attempt(5),
     wait=wait_exponential(multiplier=30, min=30, max=120),  # Wait 30s-2min between retries
-    retry=retry_if_exception(_is_rate_limit_error),
+    retry=retry_if_exception(_is_retryable_error),
 )
 
 
@@ -142,4 +151,108 @@ def fetch_weather_forcing(
 
     result = pl.concat(all_dfs)
     _log(f"Open-Meteo fetch complete: {result.height} rows")
+    return result
+
+
+# Rate limiting for parallel fetches
+_fetch_semaphore = threading.Semaphore(5)
+
+
+def fetch_weather_parallel(
+    coordinates: list[tuple[float, float]],
+    start_date,
+    end_date,
+    variables: list[str] | None = None,
+    max_workers: int = 1,
+    log: Callable[[str], None] | None = None,
+) -> pl.DataFrame:
+    """Fetch weather data with parallel coordinate batches.
+
+    Uses ThreadPoolExecutor to fetch multiple coordinate batches concurrently,
+    with rate limiting via semaphore to respect API limits.
+
+    Args:
+        coordinates: List of (longitude, latitude) tuples
+        start_date: Start date for data retrieval
+        end_date: End date for data retrieval
+        variables: Weather variables to fetch (defaults to all)
+        max_workers: Maximum concurrent API requests (default: 5)
+        log: Optional logging function (e.g., context.log.info)
+
+    Returns:
+        Polars DataFrame with weather data for all coordinates
+    """
+    variables = list(variables or WEATHER_VARS.keys())
+    hourly_vars = [WEATHER_VARS.get(v, v) for v in variables]
+
+    def _log(msg: str) -> None:
+        if log is not None:
+            log(msg)
+        else:
+            logger.info("%s", msg)
+
+    # Split coordinates into batches
+    chunks = [coordinates[i : i + BATCH_SIZE] for i in range(0, len(coordinates), BATCH_SIZE)]
+    _log(
+        f"Starting parallel Open-Meteo fetch: {len(coordinates)} coordinates, "
+        f"{len(chunks)} batches, {max_workers} workers, "
+        f"date range {str(start_date)[:10]} → {str(end_date)[:10]}"
+    )
+
+    @_retry
+    def fetch_batch_with_rate_limit(chunk_idx: int, coords: list[tuple[float, float]]) -> list[pl.DataFrame]:
+        """Fetch a batch with concurrency limited by semaphore."""
+        with _fetch_semaphore:
+            lons, lats = zip(*coords)
+            client = openmeteo_requests.Client()
+            responses = client.weather_api(
+                ARCHIVE_URL,
+                params={
+                    "latitude": lats,
+                    "longitude": lons,
+                    "start_date": str(start_date)[:10],
+                    "end_date": str(end_date)[:10],
+                    "hourly": hourly_vars,
+                    "timezone": "UTC",
+                    "wind_speed_unit": "ms",
+                },
+                timeout=120,
+            )
+            # Small delay after each request to avoid rate limits
+            time.sleep(2)
+            return [_parse_response(r, lons[i], lats[i], variables) for i, r in enumerate(responses)]
+
+    all_results: list[pl.DataFrame] = []
+    failed_batches = 0
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(fetch_batch_with_rate_limit, i, chunk): i
+            for i, chunk in enumerate(chunks)
+        }
+
+        for future in as_completed(futures):
+            chunk_idx = futures[future]
+            try:
+                dfs = future.result()
+                non_empty = [df for df in dfs if not df.is_empty()]
+                all_results.extend(non_empty)
+                _log(f"Completed batch {chunk_idx + 1}/{len(chunks)}: {len(non_empty)} responses")
+            except Exception as e:
+                failed_batches += 1
+                # Log the full error chain to understand what Open-Meteo is returning
+                cause = e.__cause__ if hasattr(e, '__cause__') else None
+                _log(f"Batch {chunk_idx + 1}/{len(chunks)} failed: {e}")
+                if cause:
+                    _log(f"  Caused by: {type(cause).__name__}: {cause}")
+
+    if failed_batches > 0:
+        _log(f"Warning: {failed_batches}/{len(chunks)} batches failed")
+
+    if not all_results:
+        _log("Parallel Open-Meteo fetch returned no data")
+        return pl.DataFrame()
+
+    result = pl.concat(all_results)
+    _log(f"Parallel Open-Meteo fetch complete: {result.height} rows")
     return result

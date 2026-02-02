@@ -22,6 +22,7 @@ from orchestration.assets import (
     weather_forcing_raw,
     dbt_flood_forecasting,
     wandb_dataset,
+    wandb_raw_tables,
 )
 
 # Set DUCKDB_PATH env var so dbt profiles.yml can reference it
@@ -37,6 +38,7 @@ defs = Definitions(
         weather_forcing_raw,
         dbt_flood_forecasting,
         wandb_dataset,
+        wandb_raw_tables,
     ],
     jobs=[
         extraction_job,
