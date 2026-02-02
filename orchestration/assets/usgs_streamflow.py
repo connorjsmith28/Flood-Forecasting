@@ -11,10 +11,9 @@ from dagster import (
     MaterializeResult,
     MetadataValue,
 )
-import pandas as pd
-
 from orchestration.configs import StreamflowConfig
 from orchestration.resources import DuckDBResource
+from orchestration.utils.time_windows import generate_time_windows
 from orchestration.utils.timeseries import get_high_watermark, upsert_timeseries
 
 RAW_SCHEMA = "raw"
@@ -30,6 +29,7 @@ class StreamflowAssetSpec:
     time_column: str  # "datetime" or "date"
     batch_size: int
     fetch_fn_name: str  # function name in elt.extraction.usgs
+    parallel_fetch_fn_name: str  # parallel version function name
     description: str
 
 
@@ -50,13 +50,15 @@ def build_usgs_streamflow_asset(spec: StreamflowAssetSpec) -> AssetsDefinition:
     ) -> MaterializeResult:
         """Extract streamflow data from USGS NWIS.
 
-        Supports incremental loading:
-        - First run: loads `days_back` days of history
-        - Subsequent runs: loads from last timestamp minus `incremental_days` overlap
+        Supports incremental loading with time-window batching:
+        - Fetches data in yearly chunks for memory efficiency
+        - Uses parallel requests within each time window
+        - Writes incrementally after each time window (checkpoint)
+        - Respects min_date to align with USGS IV data availability
         """
         from elt.extraction import usgs
 
-        fetch_fn: Callable = getattr(usgs, spec.fetch_fn_name)
+        parallel_fetch_fn: Callable = getattr(usgs, spec.parallel_fetch_fn_name)
 
         # Get site IDs
         if config.site_ids:
@@ -77,6 +79,9 @@ def build_usgs_streamflow_asset(spec: StreamflowAssetSpec) -> AssetsDefinition:
         end_date = datetime.now()
         watermark = get_high_watermark(duckdb, spec.table_name, spec.time_column)
 
+        # Parse min_date from config
+        min_date = datetime.strptime(config.min_date, "%Y-%m-%d")
+
         if watermark:
             start_date = watermark - timedelta(days=config.incremental_days)
             context.log.info(
@@ -84,47 +89,73 @@ def build_usgs_streamflow_asset(spec: StreamflowAssetSpec) -> AssetsDefinition:
                 f"fetching from {start_date.date()}"
             )
         else:
-            start_date = end_date - timedelta(days=config.days_back)
-            context.log.info(f"Initial load: fetching {config.days_back} days of history")
+            # Initial load: go back days_back but not before min_date
+            start_date = max(
+                end_date - timedelta(days=config.days_back),
+                min_date,
+            )
+            context.log.info(
+                f"Initial load: fetching from {start_date.date()} "
+                f"(min_date={config.min_date}, days_back={config.days_back})"
+            )
 
+        # Generate time windows for batched extraction
+        windows = generate_time_windows(start_date, end_date, config.time_window_days)
         context.log.info(
             f"Fetching {spec.name} for {len(site_ids)} sites "
-            f"from {start_date.date()} to {end_date.date()}"
+            f"in {len(windows)} time windows "
+            f"({start_date.date()} to {end_date.date()})"
         )
 
-        # Fetch in batches
-        all_data = []
-        for i in range(0, len(site_ids), spec.batch_size):
-            batch = site_ids[i : i + spec.batch_size]
-            context.log.info(f"Fetching batch {i // spec.batch_size + 1}...")
+        total_fetched = 0
+        total_inserted = 0
+
+        for window_idx, (window_start, window_end) in enumerate(windows):
+            context.log.info(
+                f"Time window {window_idx + 1}/{len(windows)}: "
+                f"{window_start.date()} to {window_end.date()}"
+            )
+
             try:
-                df = fetch_fn(
-                    site_ids=batch,
-                    start_date=start_date,
-                    end_date=end_date,
+                df = parallel_fetch_fn(
+                    site_ids=site_ids,
+                    start_date=window_start,
+                    end_date=window_end,
+                    batch_size=spec.batch_size,
+                    max_workers=config.parallel_fetches,
+                    log=context.log.info,
                 )
-                if not df.empty:
-                    all_data.append(df)
             except Exception as e:
-                context.log.warning(f"Failed to fetch batch: {e}")
+                context.log.warning(f"Failed to fetch window {window_idx + 1}: {e}")
+                continue
 
-        if not all_data:
+            if df.empty:
+                context.log.warning(f"No data for window {window_idx + 1}")
+                continue
+
+            df["extracted_at"] = datetime.now()
+
+            new_records = upsert_timeseries(
+                duckdb, df, spec.table_name, key_columns=["site_id", spec.time_column]
+            )
+
+            total_fetched += len(df)
+            total_inserted += new_records
+            context.log.info(
+                f"Window {window_idx + 1}/{len(windows)} complete: "
+                f"fetched {len(df)}, inserted {new_records} "
+                f"(total: {total_fetched} fetched, {total_inserted} inserted)"
+            )
+
+        if total_fetched == 0:
             return MaterializeResult(metadata={"num_records": 0, "status": "fetch_failed"})
-
-        df = pd.concat(all_data, ignore_index=True)
-        df["extracted_at"] = datetime.now()
-
-        new_records = upsert_timeseries(
-            duckdb, df, spec.table_name, key_columns=["site_id", spec.time_column]
-        )
-
-        context.log.info(f"Inserted {new_records} new records (fetched {len(df)} total)")
 
         return MaterializeResult(
             metadata={
-                "records_fetched": len(df),
-                "records_inserted": new_records,
-                "num_sites": df["site_id"].nunique(),
+                "records_fetched": total_fetched,
+                "records_inserted": total_inserted,
+                "num_sites": len(site_ids),
+                "num_time_windows": len(windows),
                 "sample_mode": config.sample_mode,
                 "is_incremental": watermark is not None,
                 "watermark": str(watermark) if watermark else "none",
@@ -148,7 +179,8 @@ usgs_streamflow_15min = build_usgs_streamflow_asset(
         time_column="datetime",
         batch_size=20,
         fetch_fn_name="fetch_usgs_streamflow",
-        description="Raw USGS streamflow observations at 15-minute intervals (incremental)",
+        parallel_fetch_fn_name="fetch_usgs_streamflow_parallel",
+        description="Raw USGS streamflow observations at 15-minute intervals (incremental, parallel)",
     )
 )
 
@@ -159,6 +191,7 @@ usgs_streamflow_daily = build_usgs_streamflow_asset(
         time_column="date",
         batch_size=50,
         fetch_fn_name="fetch_usgs_daily",
-        description="Raw USGS daily streamflow values (incremental)",
+        parallel_fetch_fn_name="fetch_usgs_daily_parallel",
+        description="Raw USGS daily streamflow values (incremental, parallel)",
     )
 )
