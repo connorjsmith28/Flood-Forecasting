@@ -14,14 +14,23 @@ from dagster_dbt import DbtCliResource
 
 from orchestration.resources import DuckDBResource
 from orchestration.utils import get_db_path, DBT_PROJECT_DIR
-from orchestration.jobs import extraction_job, transformation_job, full_pipeline_job, sync_job
+from orchestration.jobs import (
+    extraction_job,
+    transformation_job,
+    full_pipeline_job,
+    wandb_sync_job,
+    sync_job,
+)
 from orchestration.assets import (
     usgs_site_metadata,
     usgs_streamflow_15min,
     usgs_streamflow_daily,
     weather_forcing_raw,
+    nldas3_watershed_mapping,
+    nldas3_forcing_raw,
     dbt_flood_forecasting,
     wandb_dataset,
+    wandb_dataset_daily,
     wandb_raw_tables,
 )
 
@@ -36,14 +45,18 @@ defs = Definitions(
         usgs_streamflow_15min,
         usgs_streamflow_daily,
         weather_forcing_raw,
+        nldas3_watershed_mapping,
+        nldas3_forcing_raw,
         dbt_flood_forecasting,
         wandb_dataset,
+        wandb_dataset_daily,
         wandb_raw_tables,
     ],
     jobs=[
         extraction_job,
         transformation_job,
         full_pipeline_job,
+        wandb_sync_job,
         sync_job,
     ],
     resources={

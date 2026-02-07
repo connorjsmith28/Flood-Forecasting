@@ -5,3 +5,6 @@ flood_forecasting:
       type: duckdb
       path: "{{ env_var('DUCKDB_PATH') }}"
       threads: 4
+      settings:
+        memory_limit: "30GB"
+        preserve_insertion_order: false

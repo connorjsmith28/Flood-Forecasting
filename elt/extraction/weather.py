@@ -39,13 +39,22 @@ def _is_retryable_error(exc: BaseException) -> bool:
     err = str(exc).lower()
     return any(
         t in err
-        for t in ["rate limit", "limit exceeded", "too many requests", "try again", "timeout", "connection"]
+        for t in [
+            "rate limit",
+            "limit exceeded",
+            "too many requests",
+            "try again",
+            "timeout",
+            "connection",
+        ]
     )
 
 
 _retry = retry(
     stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=30, min=30, max=120),  # Wait 30s-2min between retries
+    wait=wait_exponential(
+        multiplier=30, min=30, max=120
+    ),  # Wait 30s-2min between retries
     retry=retry_if_exception(_is_retryable_error),
 )
 
@@ -66,7 +75,8 @@ def _parse_response(response, lon, lat, variables) -> pl.DataFrame:
         {
             "longitude": lon,
             "latitude": lat,
-            "datetime": np.arange(hourly.Time(), hourly.TimeEnd(), hourly.Interval()) * 1000,
+            "datetime": np.arange(hourly.Time(), hourly.TimeEnd(), hourly.Interval())
+            * 1000,
             **var_data,
         }
     ).cast({"datetime": pl.Datetime("ms", "UTC")})
@@ -117,10 +127,15 @@ def fetch_weather_forcing(
             },
             timeout=120,
         )
-        return [_parse_response(r, lons[i], lats[i], variables) for i, r in enumerate(responses)]
+        return [
+            _parse_response(r, lons[i], lats[i], variables)
+            for i, r in enumerate(responses)
+        ]
 
     all_dfs: list[pl.DataFrame] = []
-    chunks = [coordinates[i : i + BATCH_SIZE] for i in range(0, len(coordinates), BATCH_SIZE)]
+    chunks = [
+        coordinates[i : i + BATCH_SIZE] for i in range(0, len(coordinates), BATCH_SIZE)
+    ]
 
     _log(
         "Starting Open-Meteo fetch: "
@@ -133,7 +148,9 @@ def fetch_weather_forcing(
             # Small delay between batches to avoid rate limits
             time.sleep(2)
 
-        _log(f"Fetching batch {idx}/{len(chunks)} ({len(chunk)} coordinates) from Open-Meteo")
+        _log(
+            f"Fetching batch {idx}/{len(chunks)} ({len(chunk)} coordinates) from Open-Meteo"
+        )
         dfs = fetch_batch(chunk)
         non_empty = [df for df in dfs if not df.is_empty()]
         all_dfs.extend(non_empty)
@@ -192,7 +209,9 @@ def fetch_weather_parallel(
             logger.info("%s", msg)
 
     # Split coordinates into batches
-    chunks = [coordinates[i : i + BATCH_SIZE] for i in range(0, len(coordinates), BATCH_SIZE)]
+    chunks = [
+        coordinates[i : i + BATCH_SIZE] for i in range(0, len(coordinates), BATCH_SIZE)
+    ]
     _log(
         f"Starting parallel Open-Meteo fetch: {len(coordinates)} coordinates, "
         f"{len(chunks)} batches, {max_workers} workers, "
@@ -200,7 +219,9 @@ def fetch_weather_parallel(
     )
 
     @_retry
-    def fetch_batch_with_rate_limit(chunk_idx: int, coords: list[tuple[float, float]]) -> list[pl.DataFrame]:
+    def fetch_batch_with_rate_limit(
+        chunk_idx: int, coords: list[tuple[float, float]]
+    ) -> list[pl.DataFrame]:
         """Fetch a batch with concurrency limited by semaphore."""
         with _fetch_semaphore:
             lons, lats = zip(*coords)
@@ -220,7 +241,10 @@ def fetch_weather_parallel(
             )
             # Small delay after each request to avoid rate limits
             time.sleep(2)
-            return [_parse_response(r, lons[i], lats[i], variables) for i, r in enumerate(responses)]
+            return [
+                _parse_response(r, lons[i], lats[i], variables)
+                for i, r in enumerate(responses)
+            ]
 
     all_results: list[pl.DataFrame] = []
     failed_batches = 0
@@ -237,11 +261,13 @@ def fetch_weather_parallel(
                 dfs = future.result()
                 non_empty = [df for df in dfs if not df.is_empty()]
                 all_results.extend(non_empty)
-                _log(f"Completed batch {chunk_idx + 1}/{len(chunks)}: {len(non_empty)} responses")
+                _log(
+                    f"Completed batch {chunk_idx + 1}/{len(chunks)}: {len(non_empty)} responses"
+                )
             except Exception as e:
                 failed_batches += 1
                 # Log the full error chain to understand what Open-Meteo is returning
-                cause = e.__cause__ if hasattr(e, '__cause__') else None
+                cause = e.__cause__ if hasattr(e, "__cause__") else None
                 _log(f"Batch {chunk_idx + 1}/{len(chunks)} failed: {e}")
                 if cause:
                     _log(f"  Caused by: {type(cause).__name__}: {cause}")

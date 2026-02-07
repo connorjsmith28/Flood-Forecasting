@@ -36,7 +36,10 @@ def usgs_site_metadata(
         conn.execute(f"CREATE SCHEMA IF NOT EXISTS {RAW_SCHEMA}")
 
     max_sites = config.max_sites if config.sample_mode else None
-    context.log.info(f"Fetching sites in HUC {config.huc_code}..." + (f" (limit {max_sites})" if max_sites else ""))
+    context.log.info(
+        f"Fetching sites in HUC {config.huc_code}..."
+        + (f" (limit {max_sites})" if max_sites else "")
+    )
 
     # Get sites with discharge data (00060) - all sites with IV and/or daily
     context.log.info("Fetching all sites with discharge data...")
@@ -80,7 +83,9 @@ def usgs_site_metadata(
 
     num_iv = df["has_iv"].sum()
     num_daily = df["has_daily"].sum()
-    context.log.info(f"Stored metadata for {len(df)} sites ({num_iv} IV, {num_daily} daily)")
+    context.log.info(
+        f"Stored metadata for {len(df)} sites ({num_iv} IV, {num_daily} daily)"
+    )
 
     return MaterializeResult(
         metadata={

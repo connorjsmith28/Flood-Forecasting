@@ -3,6 +3,13 @@
 from datetime import datetime, timedelta
 
 
+def _to_naive(dt: datetime) -> datetime:
+    """Convert to naive datetime for comparison (strip timezone if present)."""
+    if dt.tzinfo is not None:
+        return dt.replace(tzinfo=None)
+    return dt
+
+
 def generate_time_windows(
     start_date: datetime,
     end_date: datetime,
@@ -18,6 +25,9 @@ def generate_time_windows(
     Returns:
         List of (window_start, window_end) tuples covering the full range
     """
+    start_date = _to_naive(start_date)
+    end_date = _to_naive(end_date)
+
     windows = []
     current = start_date
 

@@ -1,6 +1,6 @@
 -- ML-ready training data at daily resolution
 -- For sites that only have daily data (no 15-min IV data)
--- Provides 1-day ahead prediction targets
+-- Target columns (lead/lag) computed at training time to avoid OOM during materialization
 
 select
     -- Streamflow data
@@ -11,13 +11,19 @@ select
     streamflow.streamflow_cfs_mean,
     streamflow.gage_height_ft_mean,
 
-    -- Weather data (aggregated to daily)
+    -- NLDAS-3 forcing data (aggregated to daily)
     streamflow.precipitation_mm,
     streamflow.temperature_c_mean,
     streamflow.temperature_c_max,
     streamflow.temperature_c_min,
     streamflow.wind_speed_ms_mean,
-    streamflow.humidity_pct_mean,
+    streamflow.specific_humidity_kgkg_mean,
+    streamflow.surface_pressure_pa_mean,
+    streamflow.shortwave_radiation_wm2_mean,
+    streamflow.longwave_radiation_wm2_mean,
+    streamflow.potential_evaporation_mm,
+    streamflow.cape_jkg_mean,
+    streamflow.convective_precip_fraction_mean,
 
     -- Site attributes
     attributes.station_name,
@@ -49,17 +55,7 @@ select
     attributes.hydroatlas_sand_pct,
     attributes.hydroatlas_forest_pct,
     attributes.hydroatlas_crop_pct,
-    attributes.hydroatlas_urban_pct,
-
-    -- Target: 1-day ahead streamflow (what we're predicting)
-    lead(streamflow.streamflow_cfs_mean, 1) over (
-        partition by streamflow.site_id
-        order by streamflow.observed_date
-    ) as streamflow_cfs_target_1d,
-    lead(streamflow.gage_height_ft_mean, 1) over (
-        partition by streamflow.site_id
-        order by streamflow.observed_date
-    ) as gage_height_ft_target_1d
+    attributes.hydroatlas_urban_pct
 from {{ ref('fct_streamflow_daily') }} as streamflow
 inner join {{ ref('dim_catchment_attributes') }} as attributes
     on streamflow.site_id = attributes.site_id
