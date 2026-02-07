@@ -47,6 +47,17 @@ just transform   # Build dbt models
 
 This creates `flood_forecasting.duckdb` with streamflow observations joined to weather forcing data.
 
+### 3.5 Authenticate with NASA Earthdata (one-time)
+
+Required for NLDAS-2 watershed-averaged forcing data. Create a free account at https://urs.earthdata.nasa.gov/, then add credentials to `~/.netrc`:
+
+```bash
+echo -e "machine urs.earthdata.nasa.gov\n  login YOUR_USERNAME\n  password YOUR_PASSWORD" >> ~/.netrc
+chmod 600 ~/.netrc
+```
+
+Then authorize the GES DISC data archive at https://disc.gsfc.nasa.gov/earthdata-login
+
 ### 4. Run Experiments
 
 Authenticate with Weights & Biases (one-time):

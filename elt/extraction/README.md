@@ -26,6 +26,41 @@ This folder contains scripts for extracting data from hydrological and meteorolo
 
 > **Note**: Open-Meteo also provides a forecast API (`api.open-meteo.com/v1/forecast`) for predictive weather data. This is not currently implemented because we lack predictive data for the other sources (streamflow, basin characteristics), so forecast weather data would be orphaned.
 
+### NLDAS Forcing (`nldas3.py`)
+- **Source**: NLDAS-2 V2.0 (NLDAS_FORA0125_H) from NASA GES DISC
+- **Data**: Hourly meteorological forcing per site
+- **Temporal resolution**: **Hourly** (individual NetCDF files per timestep, ~5 MB each)
+- **Spatial resolution**: 0.125 degree (~12 km), matching CAMELS-H methodology
+- **Coverage**: 1979-present (we use 2001+), full CONUS grid
+- **Auth**: Earthdata Login credentials in `~/.netrc` + GES DISC EULA
+- **Variables**: 11 CAMELS-H forcing variables: Tair, Qair, PSurf, Wind_E, Wind_N, SWdown, LWdown, Rainf, CRainf_frac, CAPE, PotEvap
+- **Functions**:
+  - `open_nldas2_file()` - Opens a local NetCDF file and clips to Missouri Basin
+  - `aggregate_to_watersheds()` - Computes weighted averages using grid weights
+  - `fetch_nldas3_forcing()` - Searches, downloads, and processes files via earthaccess
+  - `convert_units()` - Converts temperature K to C (other variables already in target units)
+
+**Data source evolution:**
+1. **NLDAS-2 GRIB** (GrADS/DODS) - Original CAMELS-H source, decommissioned
+2. **Open-Meteo** (`weather.py`) - Point-based API, 10k/day rate limits
+3. **NLDAS-3 S3** (beta) - 12 GB files, data only through Dec 2023, wrong path templates
+4. **NLDAS-2 V2.0 NetCDF** (current) - Active, 1979-present, ~5 MB/file, earthaccess download
+
+### Watershed Grid Mapping (`watershed_mapping.py`)
+- **Source**: USGS NLDI basin delineation (via `pynhd`) + NLDAS 0.125 degree grid
+- **Purpose**: Maps each site to NLDAS grid cells for forcing data extraction
+- **Output**: `raw.nldas3_watershed_mapping` table with (site_id, grid_row, grid_col, area_weight)
+- **Functions**:
+  - `fetch_nldi_basins()` - Fetches watershed boundaries from USGS NLDI
+  - `compute_watershed_grid_weights()` - Computes area-weighted grid cell fractions per watershed
+  - `generate_point_weights()` - Maps site lat/lon to nearest grid cell (weight=1.0)
+
+**Current coverage strategy:**
+- **~45% of sites** (~1,560): NLDI returns watershed boundary polygons. These get proper area-weighted averages across all overlapping grid cells (multiple cells, fractional weights).
+- **~55% of sites** (~1,870): NLDI has no boundary. These fall back to the single nearest NLDAS grid cell at the site's lat/lon (one cell, weight=1.0). This is a point-based approximation, not a true watershed average.
+
+> **Future work — HydroBasins upstream tracing**: To get full watershed-averaged coverage for all sites, implement the CAMELS-H methodology: download HydroBasins Level 12 polygons, find the sub-basin containing each gauge, trace upstream via the `NEXT_DOWN` connectivity field, and union into a single watershed polygon per site. This approach covers any point on the global river network and would eliminate the point-based fallback. See `findwatershed_correct2.m` in the [CAMELS-H repo](https://github.com/vinhngoctran/CAMELSH/tree/main/functions) for reference.
+
 ## Static Attributes (via dbt seeds)
 
 The following static catchment attributes are provided via CSV seeds in `elt/transformation/seeds/` rather than API extraction:
@@ -57,5 +92,7 @@ The USGS site ID is the primary key that links all data sources together:
 | USGS | `raw.streamflow_15min` | 15-minute | ~25% of sites (those with `has_iv=true`) |
 | USGS | `raw.streamflow_daily` | Daily | ~75% of sites (those with `has_daily=true`) |
 | Open-Meteo | `raw.weather_forcing` | Hourly | All sites (by lat/lon lookup) |
+| NLDAS-2 | `raw.nldas3_forcing` | Hourly | All sites (~45% watershed-avg, ~55% nearest cell) |
+| NLDAS-2 | `raw.nldas3_watershed_mapping` | - | Grid weights per site (static, computed once) |
 
 > **Resolution mismatch**: Weather data is hourly while streamflow can be 15-minute or daily. For ML training, either aggregate 15-min streamflow to hourly, or interpolate weather to 15-min (less ideal since weather doesn't actually vary that fast in most cases).

@@ -5,6 +5,7 @@ from orchestration.configs.extraction import (
     StreamflowConfig,
     WeatherConfig,
     SiteConfig,
+    NLDAS3Config,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "StreamflowConfig",
     "WeatherConfig",
     "SiteConfig",
+    "NLDAS3Config",
 ]

@@ -1,5 +1,5 @@
--- Hourly streamflow joined with weather
--- Joins to dim_sites to get lat/long coordinates for weather matching
+-- Hourly streamflow joined with NLDAS-3 watershed-averaged weather
+-- Uses site_id join since NLDAS-3 data is already watershed-averaged
 
 with streamflow as (
     select
@@ -20,14 +20,19 @@ sites as (
 
 weather as (
     select
-        latitude,
-        longitude,
+        site_id,
         observed_at,
         precipitation_mm,
         temperature_c,
         wind_speed_ms,
-        humidity_pct
-    from {{ ref('stg_weather') }}
+        specific_humidity_kgkg,
+        surface_pressure_pa,
+        shortwave_radiation_wm2,
+        longwave_radiation_wm2,
+        potential_evaporation_mm,
+        cape_jkg,
+        convective_precip_fraction
+    from {{ ref('stg_nldas3_weather') }}
 ),
 
 streamflow_hourly as (
@@ -45,7 +50,7 @@ streamflow_hourly as (
     group by site_id, date_trunc('hour', observed_at)
 ),
 
--- Join with dim_sites to get coordinates for weather matching
+-- Join with dim_sites to get coordinates
 streamflow_with_coords as (
     select
         sf.site_id,
@@ -76,16 +81,21 @@ final as (
         sws.gage_height_ft_max,
         sws.gage_height_ft_min,
         sws.observation_count,
+        -- NLDAS-3 forcing variables (watershed-averaged)
         w.precipitation_mm,
         w.temperature_c,
         w.wind_speed_ms,
-        w.humidity_pct
+        w.specific_humidity_kgkg,
+        w.surface_pressure_pa,
+        w.shortwave_radiation_wm2,
+        w.longwave_radiation_wm2,
+        w.potential_evaporation_mm,
+        w.cape_jkg,
+        w.convective_precip_fraction
     from streamflow_with_coords as sws
     left join weather as w
-        on
-            sws.longitude = w.longitude
-            and sws.latitude = w.latitude
-            and sws.observation_hour = w.observed_at
+        on sws.site_id = w.site_id
+        and sws.observation_hour = w.observed_at
 )
 
 select
@@ -100,8 +110,15 @@ select
     gage_height_ft_max,
     gage_height_ft_min,
     observation_count,
+    -- Weather forcing
     precipitation_mm,
     temperature_c,
     wind_speed_ms,
-    humidity_pct
+    specific_humidity_kgkg,
+    surface_pressure_pa,
+    shortwave_radiation_wm2,
+    longwave_radiation_wm2,
+    potential_evaporation_mm,
+    cape_jkg,
+    convective_precip_fraction
 from final

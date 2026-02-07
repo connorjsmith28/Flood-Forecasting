@@ -19,7 +19,7 @@ from orchestration.utils import DBT_PROJECT_DIR
         "usgs_site_metadata",
         "usgs_streamflow_15min",
         "usgs_streamflow_daily",
-        "weather_forcing_raw",
+        "nldas3_forcing_raw",
     ],
 )
 def dbt_flood_forecasting(
