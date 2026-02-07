@@ -43,6 +43,7 @@ def generate_point_weights(
     Returns:
         DataFrame with columns: site_id, grid_row, grid_col, area_weight
     """
+
     def _log(msg: str) -> None:
         if log is not None:
             log(msg)
@@ -58,12 +59,14 @@ def generate_point_weights(
         grid_col = max(0, min(NLDAS3_NLON - 1, int(grid_col)))
         grid_row = max(0, min(NLDAS3_NLAT - 1, int(grid_row)))
 
-        rows.append({
-            "site_id": site_id,
-            "grid_row": grid_row,
-            "grid_col": grid_col,
-            "area_weight": 1.0,
-        })
+        rows.append(
+            {
+                "site_id": site_id,
+                "grid_row": grid_row,
+                "grid_col": grid_col,
+                "area_weight": 1.0,
+            }
+        )
 
     _log(f"Generated grid cell mapping for {len(rows)} sites")
     return pd.DataFrame(rows)

@@ -84,7 +84,9 @@ def nldas3_forcing_raw(
     # Load watershed mapping
     with duckdb.get_connection() as conn:
         if not duckdb.table_exists(TBL_WATERSHED_MAPPING, RAW_SCHEMA):
-            context.log.error("Watershed mapping table not found - run nldas3_watershed_mapping first")
+            context.log.error(
+                "Watershed mapping table not found - run nldas3_watershed_mapping first"
+            )
             _ensure_forcing_table(conn)
             return MaterializeResult(
                 metadata={"status": "error", "error": "missing_watershed_mapping"}
@@ -98,9 +100,7 @@ def nldas3_forcing_raw(
         context.log.warning("Watershed mapping is empty")
         with duckdb.get_connection() as conn:
             _ensure_forcing_table(conn)
-        return MaterializeResult(
-            metadata={"num_records": 0, "status": "no_mapping"}
-        )
+        return MaterializeResult(metadata={"num_records": 0, "status": "no_mapping"})
 
     num_sites = mapping_df["site_id"].nunique()
     context.log.info(f"Loaded watershed mapping for {num_sites} sites")

@@ -29,11 +29,17 @@ WANDB_STAGING = (
 
 # One artifact per table. partition_col=None means single-file export.
 TABLES = {
-    "site_metadata":            {"artifact": "raw-site-metadata",     "partition_col": None},
-    "nldas3_watershed_mapping": {"artifact": "raw-watershed-mapping", "partition_col": None},
-    "streamflow_daily":         {"artifact": "raw-streamflow-daily",  "partition_col": None},
-    "nldas3_forcing":           {"artifact": "raw-nldas3-forcing",    "partition_col": "datetime"},
-    "streamflow_15min":         {"artifact": "raw-streamflow-15min",  "partition_col": "datetime"},
+    "site_metadata": {"artifact": "raw-site-metadata", "partition_col": None},
+    "nldas3_watershed_mapping": {
+        "artifact": "raw-watershed-mapping",
+        "partition_col": None,
+    },
+    "streamflow_daily": {"artifact": "raw-streamflow-daily", "partition_col": None},
+    "nldas3_forcing": {"artifact": "raw-nldas3-forcing", "partition_col": "datetime"},
+    "streamflow_15min": {
+        "artifact": "raw-streamflow-15min",
+        "partition_col": "datetime",
+    },
 }
 
 
@@ -73,7 +79,11 @@ def export_table(
         )
         size_mb = out_path.stat().st_size / (1024 * 1024)
         context.log.info(f"  {table}: {row_count:,} rows, {size_mb:.1f} MB")
-        return table_dir, {"row_count": row_count, "size_mb": round(size_mb, 2), "files": 1}
+        return table_dir, {
+            "row_count": row_count,
+            "size_mb": round(size_mb, 2),
+            "files": 1,
+        }
 
     # Year-partitioned export
     min_year, max_year = con.execute(
@@ -105,7 +115,11 @@ def export_table(
     context.log.info(
         f"  {table} total: {total_rows:,} rows, {total_size:.1f} MB ({file_count} files)"
     )
-    return table_dir, {"row_count": total_rows, "size_mb": round(total_size, 2), "files": file_count}
+    return table_dir, {
+        "row_count": total_rows,
+        "size_mb": round(total_size, 2),
+        "files": file_count,
+    }
 
 
 def upload_artifact(
@@ -152,7 +166,9 @@ def delete_old_versions(
             if artifact.aliases:
                 continue
             try:
-                context.log.info(f"Deleting old version: {artifact_name}:{artifact.version}")
+                context.log.info(
+                    f"Deleting old version: {artifact_name}:{artifact.version}"
+                )
                 artifact.delete()
             except Exception as e:
                 context.log.debug(f"Could not delete {artifact.version}: {e}")
@@ -164,8 +180,13 @@ def delete_old_versions(
     group_name="sync",
     description="Upload raw tables to W&B as separate per-table artifacts with year-partitioned parquet files",
     compute_kind="wandb",
-    deps=["usgs_site_metadata", "usgs_streamflow_15min", "usgs_streamflow_daily",
-          "nldas3_forcing", "nldas3_watershed_mapping"],
+    deps=[
+        "usgs_site_metadata",
+        "usgs_streamflow_15min",
+        "usgs_streamflow_daily",
+        "nldas3_forcing",
+        "nldas3_watershed_mapping",
+    ],
 )
 def wandb_raw_tables(
     context: AssetExecutionContext,
@@ -190,11 +211,15 @@ def wandb_raw_tables(
 
         # Export
         context.log.info("Exporting...")
-        table_dir, stats = export_table(con, table, cfg["partition_col"], export_dir, context)
+        table_dir, stats = export_table(
+            con, table, cfg["partition_col"], export_dir, context
+        )
 
         # Upload
         context.log.info("Uploading to W&B...")
-        upload_artifact(table, cfg["artifact"], table_dir, stats, config.project, context)
+        upload_artifact(
+            table, cfg["artifact"], table_dir, stats, config.project, context
+        )
 
         all_metadata[table] = stats
 

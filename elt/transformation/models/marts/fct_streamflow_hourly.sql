@@ -94,8 +94,9 @@ final as (
         w.convective_precip_fraction
     from streamflow_with_coords as sws
     left join weather as w
-        on sws.site_id = w.site_id
-        and sws.observation_hour = w.observed_at
+        on
+            sws.site_id = w.site_id
+            and sws.observation_hour = w.observed_at
 )
 
 select

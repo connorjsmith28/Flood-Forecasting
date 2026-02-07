@@ -8,7 +8,9 @@ class ExtractionConfig(Config):
 
     sample_mode: bool = False  # If True, only load a limited sample for USGS data
     max_sites: int = 100  # Max sites to load in sample mode (controls USGS data volume)
-    parallel_fetches: int = 1  # Max concurrent API requests (keep low to avoid rate limits)
+    parallel_fetches: int = (
+        1  # Max concurrent API requests (keep low to avoid rate limits)
+    )
     time_window_days: int = 365  # Batch fetches by time window (default: yearly)
 
 
@@ -51,7 +53,9 @@ class NLDAS3Config(ExtractionConfig):
 
     days_back: int = 7  # Days of history for initial load
     incremental_days: int = 2  # Days to look back for incremental (overlap for safety)
-    min_date: str = "2001-01-01"  # NLDAS-2 data availability (1979-present, but 2001+ for our use)
+    min_date: str = (
+        "2001-01-01"  # NLDAS-2 data availability (1979-present, but 2001+ for our use)
+    )
     lag_days: int = 4  # NLDAS-2 data latency (files available ~4 days behind)
     cache_dir: str = ".cache/nldas"  # Local cache for downloaded NetCDF files
     # CAMELS-H forcing variables from NLDAS-2

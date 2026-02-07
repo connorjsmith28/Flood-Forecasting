@@ -12,11 +12,11 @@ select
     wind_u_ms,
     wind_v_ms,
     -- Compute wind speed from u/v components
-    sqrt(power(wind_u_ms, 2) + power(wind_v_ms, 2)) as wind_speed_ms,
     shortwave_radiation_wm2,
     longwave_radiation_wm2,
     potential_evaporation_mm,
     cape_jkg,
     convective_precip_fraction,
-    extracted_at
+    extracted_at,
+    sqrt(power(wind_u_ms, 2) + power(wind_v_ms, 2)) as wind_speed_ms
 from {{ source('raw', 'nldas3_forcing') }}

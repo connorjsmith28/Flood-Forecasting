@@ -54,6 +54,7 @@ def open_nldas2_file(
     Returns:
         xarray Dataset clipped to Missouri Basin, or None on error
     """
+
     def _log(msg: str) -> None:
         if log is not None:
             log(msg)
@@ -146,6 +147,7 @@ def aggregate_to_watersheds(
                     NLDAS3_ORIGIN_LON,
                     NLDAS3_RESOLUTION,
                 )
+
                 cell_lat = NLDAS3_ORIGIN_LAT + row["grid_row"] * NLDAS3_RESOLUTION
                 cell_lon = NLDAS3_ORIGIN_LON + row["grid_col"] * NLDAS3_RESOLUTION
 
@@ -166,7 +168,9 @@ def aggregate_to_watersheds(
 
             # Normalize by total weight (in case some cells were outside region)
             if total_weight > 0:
-                site_values[VARIABLE_MAPPING.get(var, var)] = weighted_sum / total_weight
+                site_values[VARIABLE_MAPPING.get(var, var)] = (
+                    weighted_sum / total_weight
+                )
             else:
                 site_values[VARIABLE_MAPPING.get(var, var)] = np.nan
 
@@ -201,6 +205,7 @@ def fetch_nldas3_forcing(
     Returns:
         Polars DataFrame with watershed-averaged forcing data
     """
+
     def _log(msg: str) -> None:
         if log is not None:
             log(msg)
