@@ -1,3 +1,5 @@
+{{ config(materialized='table') }}
+
 select
     -- Streamflow data (USGS streamflow extractor)
     streamflow.site_id,
@@ -54,17 +56,7 @@ select
     attributes.hydroatlas_sand_pct,
     attributes.hydroatlas_forest_pct,
     attributes.hydroatlas_crop_pct,
-    attributes.hydroatlas_urban_pct,
-
-    -- Target: 1-hour ahead streamflow (what we're predicting)
-    lead(streamflow.streamflow_cfs_mean, 1) over (
-        partition by streamflow.site_id
-        order by streamflow.observation_hour
-    ) as streamflow_cfs_target_1h,
-    lead(streamflow.gage_height_ft_mean, 1) over (
-        partition by streamflow.site_id
-        order by streamflow.observation_hour
-    ) as gage_height_ft_target_1h
+    attributes.hydroatlas_urban_pct
 from {{ ref('fct_streamflow_hourly') }} as streamflow
 inner join {{ ref('dim_catchment_attributes') }} as attributes
     on streamflow.site_id = attributes.site_id

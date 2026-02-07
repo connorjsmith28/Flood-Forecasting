@@ -9,7 +9,7 @@ from orchestration.assets.weather_forcing import weather_forcing_raw
 from orchestration.assets.watershed_mapping import nldas3_watershed_mapping
 from orchestration.assets.nldas3_forcing import nldas3_forcing_raw
 from orchestration.assets.dbt import dbt_flood_forecasting
-from orchestration.assets.wandb_dataset import wandb_dataset
+from orchestration.assets.wandb_dataset import wandb_dataset, wandb_dataset_daily
 from orchestration.assets.wandb_raw_tables import wandb_raw_tables
 
 __all__ = [
@@ -21,5 +21,6 @@ __all__ = [
     "nldas3_forcing_raw",
     "dbt_flood_forecasting",
     "wandb_dataset",
+    "wandb_dataset_daily",
     "wandb_raw_tables",
 ]

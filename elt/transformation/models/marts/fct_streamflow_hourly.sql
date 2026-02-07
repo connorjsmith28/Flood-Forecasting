@@ -93,10 +93,10 @@ final as (
         w.cape_jkg,
         w.convective_precip_fraction
     from streamflow_with_coords as sws
-    left join weather as w
+    inner join weather as w
         on
             sws.site_id = w.site_id
-            and sws.observation_hour = w.observed_at
+            and sws.observation_hour::timestamp = w.observed_at::timestamp
 )
 
 select

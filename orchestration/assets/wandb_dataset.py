@@ -1,4 +1,4 @@
-"""W&B dataset artifact asset for flood forecasting."""
+"""W&B dataset artifact assets for flood forecasting."""
 
 import hashlib
 import json
@@ -28,15 +28,28 @@ class WandbDatasetConfig(Config):
     artifact_name: str = "flood-dataset"
 
 
-def get_schema_fingerprint(con: duckdb.DuckDBPyConnection) -> tuple[str, dict]:
+class WandbDatasetDailyConfig(Config):
+    """Configuration for W&B daily dataset upload."""
+
+    full_refresh: bool = False
+    project: str = "flood-forecasting"
+    artifact_name: str = "flood-dataset-daily"
+
+
+def get_schema_fingerprint(
+    con: duckdb.DuckDBPyConnection, table_name: str
+) -> tuple[str, dict]:
     """Generate a fingerprint of the table schema."""
-    schema_info = con.execute("""
+    schema_info = con.execute(
+        """
         SELECT column_name, data_type
         FROM information_schema.columns
         WHERE table_schema = 'main'
-          AND table_name = 'flood_model'
+          AND table_name = ?
         ORDER BY ordinal_position
-    """).fetchall()
+    """,
+        [table_name],
+    ).fetchall()
 
     schema_dict = {col: dtype for col, dtype in schema_info}
     schema_json = json.dumps(schema_dict, sort_keys=True)
@@ -46,13 +59,17 @@ def get_schema_fingerprint(con: duckdb.DuckDBPyConnection) -> tuple[str, dict]:
 
 
 def download_existing_artifact(
-    api: wandb.Api, project: str, artifact_name: str, download_dir: Path
+    api: wandb.Api,
+    project: str,
+    artifact_name: str,
+    parquet_filename: str,
+    download_dir: Path,
 ) -> Path | None:
     """Download the existing artifact from W&B."""
     try:
         artifact = api.artifact(f"{project}/{artifact_name}:latest")
         artifact_dir = artifact.download(root=str(download_dir))
-        parquet_path = Path(artifact_dir) / "flood_model.parquet"
+        parquet_path = Path(artifact_dir) / parquet_filename
         if parquet_path.exists():
             return parquet_path
         return None
@@ -60,37 +77,31 @@ def download_existing_artifact(
         return None
 
 
-def normalize_timezone(df: pl.DataFrame) -> pl.DataFrame:
-    """Convert observation_hour to UTC for consistent merging."""
-    return df.with_columns(pl.col("observation_hour").dt.convert_time_zone("UTC"))
-
-
 def merge_datasets(
-    local_df: pl.DataFrame, existing_path: Path | None, context: AssetExecutionContext
+    local_df: pl.DataFrame,
+    existing_path: Path | None,
+    time_column: str,
+    context: AssetExecutionContext,
 ) -> pl.DataFrame:
     """Merge local data with existing W&B data."""
     if existing_path is None:
         context.log.info("No existing artifact, using local data only")
-        return normalize_timezone(local_df)
+        return local_df
 
     existing_df = pl.read_parquet(existing_path)
     context.log.info(f"Existing artifact: {len(existing_df):,} rows")
     context.log.info(f"Local data: {len(local_df):,} rows")
 
-    # Normalize timezones to UTC for consistent joining
-    local_normalized = normalize_timezone(local_df)
-    existing_normalized = normalize_timezone(existing_df)
-
     # Combine with local data taking precedence for duplicates
-    existing_only = existing_normalized.join(
-        local_normalized.select(["site_id", "observation_hour"]),
-        on=["site_id", "observation_hour"],
+    existing_only = existing_df.join(
+        local_df.select(["site_id", time_column]),
+        on=["site_id", time_column],
         how="anti",
     )
 
-    merged = pl.concat([local_normalized, existing_only])
+    merged = pl.concat([local_df, existing_only])
     context.log.info(f"Merged result: {len(merged):,} rows")
-    context.log.info(f"  New/updated from local: {len(local_normalized):,}")
+    context.log.info(f"  New/updated from local: {len(local_df):,}")
     context.log.info(f"  Retained from existing: {len(existing_only):,}")
 
     return merged
@@ -120,37 +131,37 @@ def delete_old_versions(
         context.log.warning(f"Could not clean old versions: {e}")
 
 
-@asset(
-    group_name="sync",
-    description="Upload flood_model dataset to W&B as an artifact",
-    compute_kind="wandb",
-    deps=["dbt_flood_forecasting"],
-)
-def wandb_dataset(
+def _sync_table_to_wandb(
     context: AssetExecutionContext,
-    config: WandbDatasetConfig,
+    project: str,
+    artifact_name: str,
+    full_refresh: bool,
+    table_name: str,
+    time_column: str,
+    parquet_filename: str,
+    description: str,
+    normalize_tz: bool = False,
 ) -> MaterializeResult:
-    """Export flood_model table and upload as W&B artifact.
-
-    For incremental runs, merges local data with existing W&B artifact.
-    For full refresh, uploads local data only (replacing everything).
-
-    Maintains only a single version to save storage. Schema changes
-    are tracked via fingerprints logged as metadata.
-    """
+    """Shared logic to export a DuckDB table and upload as a W&B artifact."""
     db_path = get_db_path()
     con = duckdb.connect(db_path, read_only=True)
 
     # Get schema fingerprint
-    fingerprint, schema_dict = get_schema_fingerprint(con)
+    fingerprint, schema_dict = get_schema_fingerprint(con, table_name)
     context.log.info(f"Schema fingerprint: {fingerprint}")
     context.log.info(f"Columns: {len(schema_dict)}")
 
     # Load local data
-    local_df = con.execute("SELECT * FROM main.flood_model").pl()
+    local_df = con.execute(f"SELECT * FROM main.{table_name}").pl()
     con.close()
 
-    context.log.info(f"Local flood_model: {len(local_df):,} rows")
+    context.log.info(f"Local {table_name}: {len(local_df):,} rows")
+
+    # Normalize timezone if needed (hourly data has timestamptz)
+    if normalize_tz and time_column in local_df.columns:
+        local_df = local_df.with_columns(
+            pl.col(time_column).dt.convert_time_zone("UTC")
+        )
 
     # Check previous fingerprint to detect schema changes
     api = wandb.Api()
@@ -158,7 +169,7 @@ def wandb_dataset(
     previous_fingerprint = None
 
     try:
-        prev_artifact = api.artifact(f"{config.project}/{config.artifact_name}:latest")
+        prev_artifact = api.artifact(f"{project}/{artifact_name}:latest")
         previous_fingerprint = prev_artifact.metadata.get("schema_fingerprint")
         if previous_fingerprint and previous_fingerprint != fingerprint:
             schema_changed = True
@@ -172,26 +183,38 @@ def wandb_dataset(
         tmpdir_path = Path(tmpdir)
 
         # Merge with existing data unless full refresh or schema changed
-        if config.full_refresh:
+        if full_refresh:
             context.log.info("Full refresh requested, using local data only")
-            final_df = normalize_timezone(local_df)
+            final_df = local_df
         elif schema_changed:
             context.log.info("Schema changed, using local data only (incompatible)")
-            final_df = normalize_timezone(local_df)
+            final_df = local_df
         else:
             existing_path = download_existing_artifact(
-                api, config.project, config.artifact_name, tmpdir_path / "existing"
+                api,
+                project,
+                artifact_name,
+                parquet_filename,
+                tmpdir_path / "existing",
             )
-            final_df = merge_datasets(local_df, existing_path, context)
+            if existing_path is not None and normalize_tz:
+                # Normalize existing artifact timezone too for consistent merge
+                existing_raw = pl.read_parquet(existing_path)
+                existing_raw = existing_raw.with_columns(
+                    pl.col(time_column).dt.convert_time_zone("UTC")
+                )
+                existing_path.unlink()
+                existing_raw.write_parquet(existing_path)
+            final_df = merge_datasets(local_df, existing_path, time_column, context)
 
         # Get stats from merged data
         row_count = len(final_df)
         site_count = final_df["site_id"].n_unique()
-        min_date = final_df["observation_hour"].min()
-        max_date = final_df["observation_hour"].max()
+        min_date = final_df[time_column].min()
+        max_date = final_df[time_column].max()
 
         # Export to parquet
-        parquet_path = tmpdir_path / "flood_model.parquet"
+        parquet_path = tmpdir_path / parquet_filename
         final_df.write_parquet(parquet_path)
 
         file_size_mb = parquet_path.stat().st_size / (1024 * 1024)
@@ -199,14 +222,15 @@ def wandb_dataset(
 
         # Initialize W&B run
         run = wandb.init(
-            project=config.project,
+            project=project,
             job_type="dataset-sync",
             config={
+                "table_name": table_name,
                 "row_count": row_count,
                 "site_count": site_count,
                 "min_date": str(min_date),
                 "max_date": str(max_date),
-                "full_refresh": config.full_refresh,
+                "full_refresh": full_refresh,
                 "schema_fingerprint": fingerprint,
                 "schema_changed": schema_changed,
             },
@@ -214,16 +238,16 @@ def wandb_dataset(
 
         # Create artifact with schema metadata
         artifact = wandb.Artifact(
-            name=config.artifact_name,
+            name=artifact_name,
             type="dataset",
-            description="ML-ready flood forecasting dataset",
+            description=description,
             metadata={
                 "schema_fingerprint": fingerprint,
                 "schema": schema_dict,
                 "row_count": row_count,
                 "site_count": site_count,
                 "date_range": {"min": str(min_date), "max": str(max_date)},
-                "source_table": "main.flood_model",
+                "source_table": f"main.{table_name}",
                 "uploaded_at": datetime.now().isoformat(),
                 "file_size_mb": round(file_size_mb, 2),
             },
@@ -255,11 +279,11 @@ def wandb_dataset(
         run.finish()
 
     # Clean up old versions to save storage
-    delete_old_versions(api, config.project, config.artifact_name, context)
+    delete_old_versions(api, project, artifact_name, context)
 
     context.log.info(
         f"Uploaded {row_count:,} rows ({file_size_mb:.1f} MB) "
-        f"to {config.project}/{config.artifact_name}"
+        f"to {project}/{artifact_name}"
     )
 
     return MaterializeResult(
@@ -269,7 +293,7 @@ def wandb_dataset(
             "file_size_mb": MetadataValue.float(round(file_size_mb, 2)),
             "schema_fingerprint": fingerprint,
             "schema_changed": schema_changed,
-            "full_refresh": config.full_refresh,
+            "full_refresh": full_refresh,
             "date_range": MetadataValue.json(
                 {
                     "min": str(min_date),
@@ -277,4 +301,52 @@ def wandb_dataset(
                 }
             ),
         }
+    )
+
+
+@asset(
+    group_name="sync",
+    description="Upload flood_model (hourly) dataset to W&B as an artifact",
+    compute_kind="wandb",
+    deps=["dbt_flood_forecasting"],
+)
+def wandb_dataset(
+    context: AssetExecutionContext,
+    config: WandbDatasetConfig,
+) -> MaterializeResult:
+    """Export flood_model table and upload as W&B artifact."""
+    return _sync_table_to_wandb(
+        context=context,
+        project=config.project,
+        artifact_name=config.artifact_name,
+        full_refresh=config.full_refresh,
+        table_name="flood_model",
+        time_column="observation_hour",
+        parquet_filename="flood_model.parquet",
+        description="ML-ready flood forecasting dataset (hourly resolution)",
+        normalize_tz=True,
+    )
+
+
+@asset(
+    group_name="sync",
+    description="Upload flood_model_daily dataset to W&B as an artifact",
+    compute_kind="wandb",
+    deps=["dbt_flood_forecasting"],
+)
+def wandb_dataset_daily(
+    context: AssetExecutionContext,
+    config: WandbDatasetDailyConfig,
+) -> MaterializeResult:
+    """Export flood_model_daily table and upload as W&B artifact."""
+    return _sync_table_to_wandb(
+        context=context,
+        project=config.project,
+        artifact_name=config.artifact_name,
+        full_refresh=config.full_refresh,
+        table_name="flood_model_daily",
+        time_column="observed_date",
+        parquet_filename="flood_model_daily.parquet",
+        description="ML-ready flood forecasting dataset (daily resolution)",
+        normalize_tz=False,
     )

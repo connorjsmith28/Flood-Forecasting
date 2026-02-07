@@ -26,6 +26,8 @@ models:
     marts:
       +materialized: table
       +schema: marts
+    final:
+      +materialized: table
 
 flags:
   send_anonymous_usage_stats: false
