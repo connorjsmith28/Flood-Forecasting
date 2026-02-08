@@ -1,14 +1,28 @@
 -- GAGES-II soil attributes
 select
     staid as site_id,
+    HGA as hga,
+    HGB as hgb,
+    HGAD as hgad,
+    HGC as hgc,
+    HGD as hgd,
+    HGAC as hgac,
+    HGBD as hgb_d,
+    HGCD as hgcd,
+    HGBC as hgbc,
+    HGVAR as hgvar,
     awcave as soil_water_capacity_avg,
     permave as soil_permeability_avg,
     bdave as bulk_density_avg,
     omave as organic_matter_avg,
     wtdepave as water_table_depth_avg,
     rockdepave as rock_depth_avg,
+    NO4AVE as no4_ave,
+    NO200AVE as no200_ave,
+    NO10AVE as no10_ave,
     clayave as clay_pct_avg,
     siltave as silt_pct_avg,
     sandave as sand_pct_avg,
-    kfact_up as erodibility_factor
+    kfact_up as erodibility_factor,
+    RFACT as runoff_factor
 from {{ ref('attributes_gageii_Soils') }}

@@ -7,6 +7,8 @@ select
     elev_median_m_basin as elev_median_m,
     elev_std_m_basin as elev_std_m,
     elev_site_m,
+    RRMEAN as relief_ratio_mean,
+    RRMEDIAN as relief_ratio_median,
     slope_pct,
     aspect_degrees as aspect_deg,
     aspect_northness,

@@ -1,0 +1,25 @@
+-- Core GAGES-II basin hydrologic attributes
+select
+    staid as site_id,
+    STREAMS_KM_SQ_KM as streams_km_per_sq_km,
+    STRAHLER_MAX as strahler_max,
+    MAINSTEM_SINUOUSITY as mainstem_sinuosity,
+    REACHCODE as reach_code,
+    ARTIFPATH_PCT as artificial_path_pct,
+    ARTIFPATH_MAINSTEM_PCT as artificial_path_mainstem_pct,
+    HIRES_LENTIC_PCT as hires_lentic_pct,
+    BFI_AVE as bfi_ave,
+    PERDUN as perdun,
+    PERHOR as perhor,
+    TOPWET as topwet,
+    CONTACT as contact,
+    RUNAVE7100 as runave7100,
+    WB5100_ANN_MM as wb5100_ann_mm,
+    PCT_1ST_ORDER as pct_1st_order,
+    PCT_2ND_ORDER as pct_2nd_order,
+    PCT_3RD_ORDER as pct_3rd_order,
+    PCT_4TH_ORDER as pct_4th_order,
+    PCT_5TH_ORDER as pct_5th_order,
+    PCT_6TH_ORDER_OR_MORE as pct_6th_order_or_more,
+    PCT_NO_ORDER as pct_no_order
+from {{ ref('attributes_gageii_Hydro') }}
