@@ -71,7 +71,7 @@ def get_site_metadata(
         df, _ = nwis.get_info(sites=ids)
         return df
 
-    chunks = [site_ids[i:i + 100] for i in range(0, len(site_ids), 100)]
+    chunks = [site_ids[i : i + 100] for i in range(0, len(site_ids), 100)]
     dfs = [fetch_batch(chunk) for chunk in chunks if chunk]
     dfs = [d for d in dfs if d is not None and not d.empty]
 
@@ -87,8 +87,16 @@ def get_site_metadata(
 def fetch_usgs_streamflow(site_ids, start_date, end_date) -> pd.DataFrame:
     """Fetch streamflow and gage height data (15-min intervals) from USGS NWIS."""
     # Convert dates to strings - dataretrieval requires YYYY-MM-DD format
-    start_str = start_date.strftime("%Y-%m-%d") if hasattr(start_date, "strftime") else str(start_date)
-    end_str = end_date.strftime("%Y-%m-%d") if hasattr(end_date, "strftime") else str(end_date)
+    start_str = (
+        start_date.strftime("%Y-%m-%d")
+        if hasattr(start_date, "strftime")
+        else str(start_date)
+    )
+    end_str = (
+        end_date.strftime("%Y-%m-%d")
+        if hasattr(end_date, "strftime")
+        else str(end_date)
+    )
 
     df, _ = nwis.get_iv(
         sites=list(site_ids),
@@ -100,16 +108,22 @@ def fetch_usgs_streamflow(site_ids, start_date, end_date) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(columns=out_cols)
 
-    df = df.reset_index().rename(columns={
-        "site_no": "site_id",
-        "00060": "streamflow_cfs",
-        "00065": "gage_height_ft",
-    })
+    df = df.reset_index().rename(
+        columns={
+            "site_no": "site_id",
+            "00060": "streamflow_cfs",
+            "00065": "gage_height_ft",
+        }
+    )
     # Combine qualifier columns
     qual_cols = [c for c in df.columns if c.endswith("_cd")]
-    df["qualifiers"] = df[qual_cols].apply(
-        lambda r: "|".join(str(v) for v in r if pd.notna(v)), axis=1
-    ) if qual_cols else None
+    df["qualifiers"] = (
+        df[qual_cols].apply(
+            lambda r: "|".join(str(v) for v in r if pd.notna(v)), axis=1
+        )
+        if qual_cols
+        else None
+    )
 
     return df[[c for c in out_cols if c in df.columns]].reindex(columns=out_cols)
 
@@ -121,8 +135,16 @@ def fetch_usgs_daily(site_ids, start_date, end_date) -> pd.DataFrame:
     Returns daily mean discharge and gage height statistics.
     """
     # Convert dates to strings - dataretrieval requires YYYY-MM-DD format
-    start_str = start_date.strftime("%Y-%m-%d") if hasattr(start_date, "strftime") else str(start_date)
-    end_str = end_date.strftime("%Y-%m-%d") if hasattr(end_date, "strftime") else str(end_date)
+    start_str = (
+        start_date.strftime("%Y-%m-%d")
+        if hasattr(start_date, "strftime")
+        else str(start_date)
+    )
+    end_str = (
+        end_date.strftime("%Y-%m-%d")
+        if hasattr(end_date, "strftime")
+        else str(end_date)
+    )
 
     df, _ = nwis.get_dv(
         sites=list(site_ids),
@@ -130,21 +152,33 @@ def fetch_usgs_daily(site_ids, start_date, end_date) -> pd.DataFrame:
         start=start_str,
         end=end_str,
     )
-    out_cols = ["site_id", "date", "streamflow_cfs_mean", "gage_height_ft_mean", "qualifiers"]
+    out_cols = [
+        "site_id",
+        "date",
+        "streamflow_cfs_mean",
+        "gage_height_ft_mean",
+        "qualifiers",
+    ]
     if df.empty:
         return pd.DataFrame(columns=out_cols)
 
-    df = df.reset_index().rename(columns={
-        "site_no": "site_id",
-        "datetime": "date",
-        "00060_Mean": "streamflow_cfs_mean",
-        "00065_Mean": "gage_height_ft_mean",
-    })
+    df = df.reset_index().rename(
+        columns={
+            "site_no": "site_id",
+            "datetime": "date",
+            "00060_Mean": "streamflow_cfs_mean",
+            "00065_Mean": "gage_height_ft_mean",
+        }
+    )
     # Combine qualifier columns
     qual_cols = [c for c in df.columns if c.endswith("_cd")]
-    df["qualifiers"] = df[qual_cols].apply(
-        lambda r: "|".join(str(v) for v in r if pd.notna(v)), axis=1
-    ) if qual_cols else None
+    df["qualifiers"] = (
+        df[qual_cols].apply(
+            lambda r: "|".join(str(v) for v in r if pd.notna(v)), axis=1
+        )
+        if qual_cols
+        else None
+    )
 
     return df[[c for c in out_cols if c in df.columns]].reindex(columns=out_cols)
 
@@ -177,7 +211,9 @@ def fetch_usgs_streamflow_parallel(
     chunks = [site_ids[i : i + batch_size] for i in range(0, len(site_ids), batch_size)]
 
     if log:
-        log(f"Starting parallel USGS IV fetch: {len(site_ids)} sites, {len(chunks)} batches")
+        log(
+            f"Starting parallel USGS IV fetch: {len(site_ids)} sites, {len(chunks)} batches"
+        )
 
     def fetch_batch_with_rate_limit(chunk_idx: int, batch: list[str]) -> pd.DataFrame:
         # Limit to max 5 concurrent API calls
@@ -200,7 +236,9 @@ def fetch_usgs_streamflow_parallel(
                 if not df.empty:
                     all_data.append(df)
                 if log:
-                    log(f"Completed batch {chunk_idx + 1}/{len(chunks)}: {len(df)} records")
+                    log(
+                        f"Completed batch {chunk_idx + 1}/{len(chunks)}: {len(df)} records"
+                    )
             except Exception as e:
                 failed_batches += 1
                 if log:
@@ -239,7 +277,9 @@ def fetch_usgs_daily_parallel(
     chunks = [site_ids[i : i + batch_size] for i in range(0, len(site_ids), batch_size)]
 
     if log:
-        log(f"Starting parallel USGS DV fetch: {len(site_ids)} sites, {len(chunks)} batches")
+        log(
+            f"Starting parallel USGS DV fetch: {len(site_ids)} sites, {len(chunks)} batches"
+        )
 
     def fetch_batch_with_rate_limit(chunk_idx: int, batch: list[str]) -> pd.DataFrame:
         with _usgs_semaphore:
@@ -261,7 +301,9 @@ def fetch_usgs_daily_parallel(
                 if not df.empty:
                     all_data.append(df)
                 if log:
-                    log(f"Completed batch {chunk_idx + 1}/{len(chunks)}: {len(df)} records")
+                    log(
+                        f"Completed batch {chunk_idx + 1}/{len(chunks)}: {len(df)} records"
+                    )
             except Exception as e:
                 failed_batches += 1
                 if log:

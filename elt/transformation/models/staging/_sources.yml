@@ -82,3 +82,49 @@ sources:
             description: Evapotranspiration (mm)
           - name: extracted_at
             description: When the data was extracted
+
+      - name: nldas3_forcing
+        description: NLDAS-3 watershed-averaged hourly forcing data (CAMELS-H methodology)
+        columns:
+          - name: site_id
+            description: USGS site identifier (matches GAGES-II)
+          - name: datetime
+            description: Observation timestamp (UTC)
+          - name: air_temp_c
+            description: Air temperature at 2m (°C)
+          - name: specific_humidity_kgkg
+            description: Specific humidity at 2m (kg/kg)
+          - name: surface_pressure_pa
+            description: Surface pressure (Pa)
+          - name: wind_u_ms
+            description: Eastward wind component at 10m (m/s)
+          - name: wind_v_ms
+            description: Northward wind component at 10m (m/s)
+          - name: shortwave_radiation_wm2
+            description: Surface downward shortwave radiation (W/m²)
+          - name: longwave_radiation_wm2
+            description: Surface downward longwave radiation (W/m²)
+          - name: precipitation_mm
+            description: Hourly precipitation (mm)
+          - name: convective_precip_fraction
+            description: Fraction of precipitation that is convective (-)
+          - name: cape_jkg
+            description: Convective available potential energy (J/kg)
+          - name: potential_evaporation_mm
+            description: Potential evaporation (mm/hr)
+          - name: extracted_at
+            description: When the data was extracted
+
+      - name: nldas3_watershed_mapping
+        description: Area-weighted grid cell mapping for NLDAS-3 watershed averaging
+        columns:
+          - name: site_id
+            description: USGS site identifier
+          - name: grid_row
+            description: NLDAS-3 grid row index (0 = southernmost)
+          - name: grid_col
+            description: NLDAS-3 grid column index (0 = westernmost)
+          - name: area_weight
+            description: Fraction of watershed area covered by this grid cell (sums to 1.0 per site)
+          - name: computed_at
+            description: When the mapping was computed

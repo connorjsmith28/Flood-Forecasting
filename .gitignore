@@ -71,6 +71,7 @@ data/
 
 # HTTP cache (aiohttp-client-cache)
 cache/
+.cache/
 
 # Secrets
 secrets

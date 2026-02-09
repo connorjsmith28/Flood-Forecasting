@@ -22,6 +22,12 @@ full_pipeline_job = define_asset_job(
     selection=AssetSelection.groups("extraction", "transformation"),
 )
 
+wandb_sync_job = define_asset_job(
+    name="wandb_sync_job",
+    description="Upload datasets to W&B (no extraction or transformation)",
+    selection=AssetSelection.groups("sync"),
+)
+
 sync_job = define_asset_job(
     name="sync_job",
     description="Full pipeline + upload to W&B: extract, transform, sync dataset",

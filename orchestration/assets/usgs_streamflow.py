@@ -77,7 +77,11 @@ def build_usgs_streamflow_asset(spec: StreamflowAssetSpec) -> AssetsDefinition:
 
         # Determine date range based on watermark
         end_date = datetime.now()
+        if end_date.tzinfo is not None:
+            end_date = end_date.replace(tzinfo=None)
         watermark = get_high_watermark(duckdb, spec.table_name, spec.time_column)
+        if watermark is not None and watermark.tzinfo is not None:
+            watermark = watermark.replace(tzinfo=None)
 
         # Parse min_date from config
         min_date = datetime.strptime(config.min_date, "%Y-%m-%d")
@@ -148,7 +152,9 @@ def build_usgs_streamflow_asset(spec: StreamflowAssetSpec) -> AssetsDefinition:
             )
 
         if total_fetched == 0:
-            return MaterializeResult(metadata={"num_records": 0, "status": "fetch_failed"})
+            return MaterializeResult(
+                metadata={"num_records": 0, "status": "fetch_failed"}
+            )
 
         return MaterializeResult(
             metadata={
