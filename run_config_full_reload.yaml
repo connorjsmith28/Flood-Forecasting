@@ -24,11 +24,3 @@ ops:
       min_date: "2007-10-01"
       parallel_fetches: 5
       time_window_days: 365
-
-  weather_forcing_raw:
-    config:
-      sample_mode: false
-      days_back: 7300
-      min_date: "2007-10-01"
-      parallel_fetches: 1       # Keep low to avoid rate limits
-      time_window_days: 365
