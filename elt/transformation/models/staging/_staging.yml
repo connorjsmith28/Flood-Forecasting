@@ -50,24 +50,3 @@ models:
       - name: extracted_at
         description: When the data was extracted
 
-  - name: stg_weather
-    description: Hourly meteorological forcing data from Open-Meteo
-    columns:
-      - name: latitude
-        description: Latitude of grid point
-      - name: longitude
-        description: Longitude of grid point
-      - name: observed_at
-        description: Observation timestamp (UTC)
-      - name: precipitation_mm
-        description: Hourly precipitation in millimeters
-      - name: temperature_c
-        description: 2-m air temperature in Celsius
-      - name: humidity_pct
-        description: Relative humidity percentage
-      - name: wind_speed_ms
-        description: Wind speed in m/s
-      - name: wind_direction_deg
-        description: Wind direction in degrees
-      - name: extracted_at
-        description: When the data was extracted
