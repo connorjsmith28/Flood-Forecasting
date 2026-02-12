@@ -141,3 +141,8 @@ seeds:
     config:
       column_types:
         STAID: varchar
+
+  - name: filtered_site_ids
+    config:
+      column_types:
+        site_id: varchar
