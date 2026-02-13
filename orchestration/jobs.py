@@ -5,7 +5,7 @@ from dagster import define_asset_job, AssetSelection, in_process_executor
 # In-process so only one step touches DuckDB at a time (no concurrent writers).
 extraction_job = define_asset_job(
     name="extraction_job",
-    description="Extract raw data from USGS and Open-Meteo",
+    description="Extract raw data from USGS and NLDAS-3",
     selection=AssetSelection.groups("extraction"),
     executor_def=in_process_executor,
 )

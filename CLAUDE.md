@@ -14,7 +14,6 @@ The original CAMELSH dataset paper can be found: https://www.osti.gov/pages/serv
 | Source | Data | Resolution | Key ID |
 |--------|------|------------|--------|
 | USGS NWIS | Streamflow + site metadata | 15-min (IV, ~25% of sites) / Daily (~75%) | site_id |
-| Open-Meteo | Weather forcing (precip, temp, humidity, wind, radiation, pressure, ET) | Hourly | lat/long |
 | GAGES-II (seeds) | Static watershed attributes (from CAMELS) | - | site_id |
 | HydroATLAS (seeds) | 195+ catchment attributes (from CAMELS) | - | site_id |
 | NLDAS-2 (seeds) | Climate indices (from CAMELS) | - | site_id |
@@ -45,7 +44,6 @@ models/                 # ML models (not yet implemented)
   - `raw.site_metadata` - Site locations, drainage areas, and data availability flags (`has_iv`, `has_daily`)
   - `raw.streamflow_15min` - USGS 15-minute interval observations (~25% of sites have IV data)
   - `raw.streamflow_daily` - USGS daily mean values (~75% of sites have daily data)
-  - `raw.weather_forcing` - Open-Meteo hourly data (historical API is hourly only, no sub-hourly)
   - `final.flood_model` - ML-ready training data
 
 > **Note**: Weather is hourly while streamflow can be 15-min or daily. For ML training, aggregate 15-min streamflow to hourly to match weather resolution.

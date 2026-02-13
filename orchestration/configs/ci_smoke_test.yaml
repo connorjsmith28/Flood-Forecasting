@@ -14,8 +14,3 @@ ops:
       sample_mode: true
       max_sites: 10
       days_back: 3
-  weather_forcing_raw:
-    config:
-      sample_mode: true
-      max_sites: 10
-      days_back: 3
