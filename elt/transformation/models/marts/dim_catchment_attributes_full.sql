@@ -1,11 +1,7 @@
 -- Catchment attributes for Missouri Basin sites
 -- Joins CAMELS-H static attributes (GAGES-II, HydroATLAS, NLDAS climate)
 
-with sites as (
-    select * from {{ ref('stg_site_metadata') }}
-),
-
-bas_classif as (
+with bas_classif as (
     select * from {{ ref('stg_gagesii_bas_classif') }}
 ),
 
@@ -102,14 +98,15 @@ nldas_climate as (
 )
 
 select
-    -- Site identification
-    s.site_id,
-    s.station_name,
-    s.latitude,
-    s.longitude,
-    s.huc_code,
-
     -- Basin characteristics
+    b.site_id,
+    b.staname,
+    b.HUC02,
+    b.lat_gage,
+    b.lng_gage,
+    b.state_gage,
+    b.fips_site,
+    b.countyname_site,
     b.drain_sqkm,
 
     -- Basin classification
@@ -589,28 +586,27 @@ select
     t.aspect_northness,
     t.aspect_eastness,
 
-from sites as s
-left join bas_classif as bc on s.site_id = bc.site_id
-left join bas_morph as bm on s.site_id = bm.site_id
-left join basin as b on s.site_id = b.site_id
-left join bound_qa as bqa on s.site_id = bqa.site_id
-left join geology as g on s.site_id = g.site_id
-left join hydro as h on s.site_id = h.site_id
-left join hydromod_dams as hd on s.site_id = hd.site_id
-left join hydromod_other as ho on s.site_id = ho.site_id
-left join landscape_pat as lp on s.site_id = lp.site_id
-left join lc_crops as lc on s.site_id = lc.site_id
-left join lc06_basin as lb on s.site_id = lb.site_id
-left join lc06_mains100 as lm1 on s.site_id = lm1.site_id
-left join lc06_mains800 as lm8 on s.site_id = lm8.site_id
-left join lc06_rip100 as lr1 on s.site_id = lr1.site_id
-left join lc06_rip800 as lr8 on s.site_id = lr8.site_id
-left join nutrient_app as n on s.site_id = n.site_id
-left join pest_app as pa on s.site_id = pa.site_id
-left join pop_infrastr as pi on s.site_id = pi.site_id
-left join prot_areas as par on s.site_id = par.site_id
-left join regions as r on s.site_id = r.site_id
-left join soils as so on s.site_id = so.site_id
-left join topo as t on s.site_id = t.site_id
-left join hydroatlas as ha on s.site_id = ha.site_id
-left join nldas_climate as c on s.site_id = c.site_id
+from bas_classif as bc 
+left join bas_morph as bm on bc.site_id = bm.site_id
+left join basin as b on bc.site_id = b.site_id
+left join bound_qa as bqa on bc.site_id = bqa.site_id
+left join geology as g on bc.site_id = g.site_id
+left join hydro as h on bc.site_id = h.site_id
+left join hydromod_dams as hd on bc.site_id = hd.site_id
+left join hydromod_other as ho on bc.site_id = ho.site_id
+left join landscape_pat as lp on bc.site_id = lp.site_id
+left join lc_crops as lc on bc.site_id = lc.site_id
+left join lc06_basin as lb on bc.site_id = lb.site_id
+left join lc06_mains100 as lm1 on bc.site_id = lm1.site_id
+left join lc06_mains800 as lm8 on bc.site_id = lm8.site_id
+left join lc06_rip100 as lr1 on bc.site_id = lr1.site_id
+left join lc06_rip800 as lr8 on bc.site_id = lr8.site_id
+left join nutrient_app as n on bc.site_id = n.site_id
+left join pest_app as pa on bc.site_id = pa.site_id
+left join pop_infrastr as pi on bc.site_id = pi.site_id
+left join prot_areas as par on bc.site_id = par.site_id
+left join regions as r on bc.site_id = r.site_id
+left join soils as so on bc.site_id = so.site_id
+left join topo as t on bc.site_id = t.site_id
+left join hydroatlas as ha on bc.site_id = ha.site_id
+left join nldas_climate as c on bc.site_id = c.site_id

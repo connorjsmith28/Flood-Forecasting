@@ -146,3 +146,8 @@ seeds:
     config:
       column_types:
         site_id: varchar
+
+  - name: info
+    config:
+      column_types:
+        STAID: varchar
