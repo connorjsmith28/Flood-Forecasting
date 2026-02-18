@@ -58,6 +58,22 @@ def clean_wandb_temp(wandb_dir: Path) -> None:
         shutil.rmtree(WANDB_STAGING, ignore_errors=True)
 
 
+def get_raw_table_schema(
+    con: duckdb.DuckDBPyConnection, table: str
+) -> dict[str, str]:
+    """Return column name -> data_type for raw.{table}."""
+    rows = con.execute(
+        """
+        SELECT column_name, data_type
+        FROM information_schema.columns
+        WHERE table_schema = 'raw' AND table_name = ?
+        ORDER BY ordinal_position
+    """,
+        [table],
+    ).fetchall()
+    return {col: dtype for col, dtype in rows}
+
+
 def export_table(
     con: duckdb.DuckDBPyConnection,
     table: str,
@@ -214,6 +230,8 @@ def wandb_raw_tables(
         table_dir, stats = export_table(
             con, table, cfg["partition_col"], export_dir, context
         )
+        # Add schema so artifact metadata has column count
+        stats["schema"] = get_raw_table_schema(con, table)
 
         # Upload
         context.log.info("Uploading to W&B...")
