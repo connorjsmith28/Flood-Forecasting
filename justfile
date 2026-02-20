@@ -44,7 +44,8 @@ db:
 # Launch DuckDB UI with write access (closes lock on exit)
 db-write:
     duckdb -ui flood_forecasting.duckdb
-
+download-wandb:
+    uv run python elt/weights_biases_integration/download_repository.py
 # Run full extraction job (USGS, NLDAS, GAGES-II)
 extract:
     uv run dagster job execute -m orchestration.definitions -j extraction_job
