@@ -1,7 +1,11 @@
+import os
+import joblib
+import numpy as np
 import polars as pl
 import torch
 import torch.nn as nn
-from helper_functions.helpers import pull_wandb
+import wandb
+from SRC.helper_functions.helpers import pull_wandb
 
 
 class TorchStandardScaler:
@@ -55,9 +59,7 @@ def train_val_test_split_by_time(
     
     return train_df, val_df, test_df
 
-
-
-def preprocess_missouri(config: dict) -> tuple:
+def preprocess(config: dict) -> tuple:
     """
     Pipeline: load -> select -> filter -> sort -> add target -> split by time -> scale (TorchStandardScaler).
     Returns (train_X_scaled, val_X_scaled, test_X_scaled, train_y_scaled, val_y_scaled, test_y_scaled,
@@ -66,10 +68,13 @@ def preprocess_missouri(config: dict) -> tuple:
     """
     # 1. Load (optional config["n_rows"] limits rows read from artifact)
     df = pull_wandb(
-        config,
-        "flood_model_missouri",
-        n_rows=config.get("n_rows"),
-    )
+        {"train_split": config["train_split"], 
+        "val_split": config["val_split"], 
+        "input_cols": config["input_cols"], 
+        "target": config["target"]},
+        config["file_name"],
+        n_rows=config["n_rows"],
+    )   
 
     # 2. Select features and filter
     features = ["site_id", "observation_hour"] + config["input_cols"]
@@ -138,3 +143,62 @@ def preprocess_missouri(config: dict) -> tuple:
         feature_scaler,
         target_scaler,
     )
+
+
+def preprocess_and_save(
+    config: dict,
+    *,
+    out_dir: str = "pipeline_outputs",
+    artifact_name: str = "flood-preprocessed-missouri",
+    artifact_type: str = "preprocessed-dataset",
+    artifact_description: str = "Scaled flat arrays + scalers + site ids. Model-agnostic. Target=24h ahead streamflow.") -> None:
+    """
+    Run preprocess_missouri(config), save outputs to disk, and log as a W&B artifact.
+    Expects an active W&B run (e.g. from pull_wandb inside preprocess_missouri).
+    """
+    (
+        train_X_scaled,
+        val_X_scaled,
+        test_X_scaled,
+        train_y_scaled,
+        val_y_scaled,
+        test_y_scaled,
+        train_sites,
+        val_sites,
+        test_sites,
+        feature_scaler,
+        target_scaler,
+    ) = preprocess(config)
+
+    print(
+        f"\nTrain: {train_X_scaled.shape[0]:,} | Val: {val_X_scaled.shape[0]:,} | Test: {test_X_scaled.shape[0]:,}"
+    )
+
+    os.makedirs(out_dir, exist_ok=True)
+
+    # Save scaled arrays (tensors -> numpy for .npy)
+    np.save(f"{out_dir}/train_X_scaled.npy", train_X_scaled.numpy())
+    np.save(f"{out_dir}/val_X_scaled.npy", val_X_scaled.numpy())
+    np.save(f"{out_dir}/test_X_scaled.npy", test_X_scaled.numpy())
+    np.save(f"{out_dir}/train_y_scaled.npy", train_y_scaled.numpy())
+    np.save(f"{out_dir}/val_y_scaled.npy", val_y_scaled.numpy())
+    np.save(f"{out_dir}/test_y_scaled.npy", test_y_scaled.numpy())
+
+    np.save(f"{out_dir}/train_sites.npy", train_sites)
+    np.save(f"{out_dir}/val_sites.npy", val_sites)
+    np.save(f"{out_dir}/test_sites.npy", test_sites)
+
+    joblib.dump(feature_scaler, f"{out_dir}/feature_scaler.pkl")
+    joblib.dump(target_scaler, f"{out_dir}/target_scaler.pkl")
+
+    run = wandb.run
+    if run is not None:
+        artifact = wandb.Artifact(
+            name=artifact_name,
+            type=artifact_type,
+            description=artifact_description,
+        )
+        artifact.add_dir(out_dir)
+        run.log_artifact(artifact, aliases=["latest"])
+        run.finish()
+        print("\nPipeline outputs uploaded to W&B.")
