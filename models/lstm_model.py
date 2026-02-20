@@ -1,130 +1,55 @@
 """
 LSTM Flood Forecasting Model (PyTorch)
-Predicts next-hour gage height using historical weather and streamflow data.
-Target: gage_height_ft_target_1h
+Predicts streamflow 24 hours (1 day) in advance using historical weather and streamflow data.
+Target: streamflow_cfs_target_24h
+
+Downloads preprocessed data from the W&B artifact produced by missouri_preprocessing.py
 """
 
-import polars as pl
 import wandb
+import numpy as np
+import joblib
 
-# ── Step 1: Load data from wandb ────────────────────────────────────────────
+# 1. Download preprocessed artifact from W&B
 
-api = wandb.Api()
-artifact = api.artifact("flood-forecasting/flood-dataset:latest")
+run = wandb.init(
+    project="flood-forecasting",
+    entity="connorjsmith28-rice-university",
+    job_type="training",
+    config={
+        "window_size": 168,
+        "model": "lstm",
+    }
+)
+
+# Download the preprocessed artifact (created by missouri_preprocessing.py)
+artifact = run.use_artifact("flood-preprocessed-missouri:latest")
 artifact_dir = artifact.download()
 
-df = pl.read_parquet(f"{artifact_dir}/flood_model.parquet")
+# Load scaled arrays
+train_X_scaled = np.load(f"{artifact_dir}/train_X_scaled.npy")
+val_X_scaled   = np.load(f"{artifact_dir}/val_X_scaled.npy")
+test_X_scaled  = np.load(f"{artifact_dir}/test_X_scaled.npy")
+train_y_scaled = np.load(f"{artifact_dir}/train_y_scaled.npy")
+val_y_scaled   = np.load(f"{artifact_dir}/val_y_scaled.npy")
+test_y_scaled  = np.load(f"{artifact_dir}/test_y_scaled.npy")
 
-print(f"Full dataset: {df.shape[0]:,} rows x {df.shape[1]} columns")
-print(f"Date range: {df['observation_hour'].min()} to {df['observation_hour'].max()}")
+# Load site ids (needed for create_sequences)
+# site_id is string, so allow_pickle=True preserves the string dtype
+train_sites = np.load(f"{artifact_dir}/train_sites.npy", allow_pickle=True)
+val_sites   = np.load(f"{artifact_dir}/val_sites.npy", allow_pickle=True)
+test_sites  = np.load(f"{artifact_dir}/test_sites.npy", allow_pickle=True)
 
-# ── Step 2: Select features and filter ──────────────────────────────────────
+# Load scalers (needed to convert predictions back to real CFS values)
+target_scaler  = joblib.load(f"{artifact_dir}/target_scaler.pkl")
+feature_scaler = joblib.load(f"{artifact_dir}/feature_scaler.pkl")
 
-FEATURES = [
-    "site_id",
-    "observation_hour",
-    "latitude",
-    "longitude",
-    "streamflow_cfs_mean",
-    "gage_height_ft_mean",
-    "precipitation_mm",
-    "temperature_c",
-    "specific_humidity_kgkg",
-]
+print(f"Downloaded preprocessed data from W&B artifact")
+print(f"train_X_scaled: {train_X_scaled.shape}, train_y_scaled: {train_y_scaled.shape}")
 
-# Select columns
-df = df.select(FEATURES)
+# 2. Create LSTM sequences (LSTM-specific, stays here)
 
-# Drop rows missing gage height or streamflow (most rows are weather-only)
-df = df.drop_nulls(subset=["gage_height_ft_mean", "streamflow_cfs_mean"])
-print(f"After dropping nulls: {df.shape[0]:,} rows")
-
-# Filter to last 2 years
-max_date = df["observation_hour"].max()
-two_years_ago = max_date - pl.duration(days=730)
-df = df.filter(pl.col("observation_hour") >= two_years_ago)
-print(f"After 2-year filter: {df.shape[0]:,} rows")
-
-# Sample 100 sites (pick those with the most data for better sequences)
-site_counts = df.group_by("site_id").len().sort("len", descending=True)
-top_sites = site_counts.head(100)["site_id"]
-df = df.filter(pl.col("site_id").is_in(top_sites.to_list()))
-print(f"After top 100 sites: {df.shape[0]:,} rows")
-
-# Remove duplicates
-df = df.unique(subset=["site_id", "observation_hour"], keep="first")
-
-# Sort by site and time (required for LSTM sequences)
-df = df.sort(["site_id", "observation_hour"])
-
-# Create target: next hour's gage height (shift within each site)
-df = df.with_columns(
-    pl.col("gage_height_ft_mean")
-    .shift(-1)
-    .over("site_id")
-    .alias("gage_height_ft_target_1h")
-)
-
-TARGET = "gage_height_ft_target_1h"
-
-# Drop rows where target is null (last row per site from the shift)
-df = df.drop_nulls(subset=[TARGET])
-
-print(f"\nFiltered dataset: {df.shape[0]:,} rows x {df.shape[1]} columns")
-print(f"Sites: {df['site_id'].n_unique()}")
-print(f"Date range: {df['observation_hour'].min()} to {df['observation_hour'].max()}")
-print(f"Null counts:\n{df.null_count()}")
-
-# ── Step 3: Scale features and create LSTM sequences ────────────────────────
-
-import numpy as np
-from sklearn.preprocessing import StandardScaler
-
-# Columns the LSTM will use as input features (numeric only, no IDs or timestamps)
-INPUT_COLS = [
-    "latitude",
-    "longitude",
-    "streamflow_cfs_mean",
-    "gage_height_ft_mean",
-    "precipitation_mm",
-    "temperature_c",
-    "specific_humidity_kgkg",
-]
-
-WINDOW_SIZE = 24  # Use past 24 hours to predict next hour's gage height
-
-# Split by time: first 80% train, next 10% val, last 10% test
-# (time-based split avoids data leakage - no future data in training)
-split_dates = df["observation_hour"].quantile(0.8), df["observation_hour"].quantile(0.9)
-train_df = df.filter(pl.col("observation_hour") < split_dates[0])
-val_df = df.filter(
-    (pl.col("observation_hour") >= split_dates[0])
-    & (pl.col("observation_hour") < split_dates[1])
-)
-test_df = df.filter(pl.col("observation_hour") >= split_dates[1])
-
-print(f"\nTrain: {len(train_df):,} rows ({train_df['observation_hour'].min()} to {train_df['observation_hour'].max()})")
-print(f"Val:   {len(val_df):,} rows ({val_df['observation_hour'].min()} to {val_df['observation_hour'].max()})")
-print(f"Test:  {len(test_df):,} rows ({test_df['observation_hour'].min()} to {test_df['observation_hour'].max()})")
-
-# Fit scaler on training data only (prevents data leakage)
-scaler = StandardScaler()
-scaler.fit(train_df.select(INPUT_COLS).to_numpy())
-
-# Scale all splits
-train_X_scaled = scaler.transform(train_df.select(INPUT_COLS).to_numpy())
-val_X_scaled = scaler.transform(val_df.select(INPUT_COLS).to_numpy())
-test_X_scaled = scaler.transform(test_df.select(INPUT_COLS).to_numpy())
-
-train_y = train_df[TARGET].to_numpy()
-val_y = val_df[TARGET].to_numpy()
-test_y = test_df[TARGET].to_numpy()
-
-# Also scale the target (helps LSTM training stability)
-target_scaler = StandardScaler()
-train_y_scaled = target_scaler.fit_transform(train_y.reshape(-1, 1)).flatten()
-val_y_scaled = target_scaler.transform(val_y.reshape(-1, 1)).flatten()
-test_y_scaled = target_scaler.transform(test_y.reshape(-1, 1)).flatten()
+WINDOW_SIZE = run.config["window_size"]
 
 
 def create_sequences(X, y, site_ids, window_size):
@@ -157,16 +82,13 @@ def create_sequences(X, y, site_ids, window_size):
     return np.array(X_sequences), np.array(y_sequences)
 
 
-# Create sequences for each split
-train_sites = train_df["site_id"].to_numpy()
-val_sites = val_df["site_id"].to_numpy()
-test_sites = test_df["site_id"].to_numpy()
-
 print("\nCreating sequences...")
 X_train, y_train = create_sequences(train_X_scaled, train_y_scaled, train_sites, WINDOW_SIZE)
-X_val, y_val = create_sequences(val_X_scaled, val_y_scaled, val_sites, WINDOW_SIZE)
-X_test, y_test = create_sequences(test_X_scaled, test_y_scaled, test_sites, WINDOW_SIZE)
+X_val, y_val     = create_sequences(val_X_scaled, val_y_scaled, val_sites, WINDOW_SIZE)
+X_test, y_test   = create_sequences(test_X_scaled, test_y_scaled, test_sites, WINDOW_SIZE)
 
 print(f"Train sequences: {X_train.shape}")
 print(f"Val sequences:   {X_val.shape}")
 print(f"Test sequences:  {X_test.shape}")
+
+# 3. LSTM model goes here

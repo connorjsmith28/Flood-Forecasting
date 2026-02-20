@@ -69,6 +69,11 @@ data/
 *.csv
 !**/seeds/*.csv
 
+# Preprocessed data files (stored in W&B artifacts, not git)
+*.npy
+artifacts/
+pipeline_outputs/
+
 # HTTP cache (aiohttp-client-cache)
 cache/
 .cache/
