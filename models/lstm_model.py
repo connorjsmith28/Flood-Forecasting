@@ -9,8 +9,58 @@ Downloads preprocessed data from the W&B artifact produced by missouri_preproces
 import wandb
 import numpy as np
 import joblib
+from SRC.helper_functions.preprocessing import preprocess
 
-# 1. Download preprocessed artifact from W&B
+
+config = {
+    "input_cols": [
+        "latitude",
+        "longitude",
+        "streamflow_cfs_mean",
+        "gage_height_ft_mean",
+        "precipitation_mm",
+        "temperature_c",
+        "specific_humidity_kgkg",
+    ], 
+    "target": "streamflow_cfs_target_24h",
+    "train_split": 0.8,
+    "val_split": 0.9,
+    "n_rows": 100,
+    "file_name": "flood-dataset-missouri",
+}
+
+
+
+
+train_X_scaled, val_X_scaled, test_X_scaled, train_y_scaled, val_y_scaled, test_y_scaled, train_sites, val_sites, test_sites, feature_scaler, target_scaler = preprocess(config)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+'''# 1. Download preprocessed artifact from W&B
 
 run = wandb.init(
     project="flood-forecasting",
@@ -91,4 +141,4 @@ print(f"Train sequences: {X_train.shape}")
 print(f"Val sequences:   {X_val.shape}")
 print(f"Test sequences:  {X_test.shape}")
 
-# 3. LSTM model goes here
+# 3. LSTM model goes here'''
