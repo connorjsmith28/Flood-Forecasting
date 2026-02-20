@@ -10,7 +10,7 @@ import numpy as np
 import joblib
 import os
 from sklearn.preprocessing import StandardScaler
-
+from helper_functions.helpers import pull_wandb
 # Config
 
 FEATURES = [
@@ -39,27 +39,14 @@ TARGET = "streamflow_cfs_target_24h"
 
 TRAIN_SPLIT = 0.8
 VAL_SPLIT = 0.9
-
 # Start W&B run
+config={
+            "train_split": TRAIN_SPLIT,
+            "val_split": VAL_SPLIT,
+            "input_cols": INPUT_COLS,
+            "target": TARGET}
 
-run = wandb.init(
-    project="flood-forecasting",
-    entity="connorjsmith28-rice-university",
-    job_type="preprocessing",
-    config={
-        "train_split": TRAIN_SPLIT,
-        "val_split": VAL_SPLIT,
-        "input_cols": INPUT_COLS,
-        "target": TARGET,
-    }
-)
-
-# 1. Load data from wandb
-
-artifact = run.use_artifact("connorjsmith28-rice-university/flood-forecasting/flood-dataset-missouri:latest")
-artifact_dir = artifact.download()
-
-df = pl.read_parquet(f"{artifact_dir}/flood_model_missouri.parquet")
+df = pull_wandb(config, "flood_model_missouri")
 
 print(f"Full dataset: {df.shape[0]:,} rows x {df.shape[1]} columns")
 print(f"Date range: {df['observation_hour'].min()} to {df['observation_hour'].max()}")
