@@ -79,13 +79,13 @@ class processor():
         self.test_sites = None
         self.feature_scaler = None
         self.target_scaler = None
-        self.pull_data()
-        self.preprocess()
-
-    def pull_data(self):
+    def preprocess_raw_data(self):
+        self._pull_data()
+        self._preprocess()
+    def _pull_data(self):
         self.df = pull_wandb(self.config["file_name"],self.config["file_path"],self.config['n_rows'])
         
-    def preprocess(self):
+    def _preprocess(self):
         """
         Pipeline: load -> select -> filter -> sort -> add target -> split by time -> scale (TorchStandardScaler).
         Returns (train_X_scaled, val_X_scaled, test_X_scaled, train_y_scaled, val_y_scaled, test_y_scaled,
@@ -153,7 +153,7 @@ class processor():
                 self.train_sites, self.val_sites, self.test_sites,
                 self.feature_scaler, self.target_scaler)
     def save_to_wandb(self, artifact_name, artifact_type, artifact_description, out_dir):
-
+        #todo sasha
         os.makedirs(out_dir, exist_ok=True)
 
         # Save scaled arrays (tensors -> numpy for .npy)
@@ -183,4 +183,12 @@ class processor():
             run.log_artifact(artifact, aliases=["latest"])
             run.finish()
             print("\nPipeline outputs uploaded to W&B.")
-        #todo write to return output
+    def pull_files_from_wandb(self, file_name, file_path, n_rows=None):
+        #todo sasha set variables to what they are in wandb instead of having to run preprocess to pull from wandb
+        self.df = pull_wandb(file_name, file_path, n_rows)
+    def unscale_predictions(self, scaled_preds: torch.Tensor) -> torch.Tensor:
+        """Inverse transform scaled predictions back to original target scale."""
+        return self.target_scaler.inverse_transform(scaled_preds.unsqueeze(1)).squeeze()
+    def scale_new_data(self, new_X: torch.Tensor) -> torch.Tensor:
+        """Scale new input data using fitted feature_scaler."""
+        return self.feature_scaler.transform(new_X)
