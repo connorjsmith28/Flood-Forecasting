@@ -9,9 +9,8 @@ Downloads preprocessed data from the W&B artifact produced by missouri_preproces
 import wandb
 import numpy as np
 import joblib
-from SRC.helper_functions.preprocessing import preprocess
-
-
+from SRC.helper_functions.helpers import pull_wandb
+from SRC.helper_functions.preprocessing import processor
 config = {
     "input_cols": [
         "latitude",
@@ -26,15 +25,22 @@ config = {
     "train_split": 0.8,
     "val_split": 0.9,
     "n_rows": 100,
-    "file_name": "flood-dataset-missouri",
+    "file_path": "flood-dataset-missouri",
+    "file_name": "flood_model_missouri"
 }
 
 
+df = pull_wandb(config["file_name"],config["file_path"],config['n_rows'])
+pcr = processor(config)
+
+train_X_scaled, val_X_scaled, test_X_scaled, train_y_scaled, val_y_scaled, test_y_scaled, train_sites, val_sites, test_sites, feature_scaler, target_scaler = pcr.return_outputs()
+
+print(train_X_scaled)
 
 
-train_X_scaled, val_X_scaled, test_X_scaled, train_y_scaled, val_y_scaled, test_y_scaled, train_sites, val_sites, test_sites, feature_scaler, target_scaler = preprocess(config)
+#example of how to set up your model sasha
 
-
+##
 
 
 
