@@ -110,7 +110,8 @@ class processor():
             .over("site_id")
             .alias(target_col)
         )
-        #df = df.drop_nulls(subset=[target_col])
+        # drop rows where target is null (last 24 rows per site after shift)
+        df = df.drop_nulls(subset=[target_col])
 
         # 5. Split by time (torch quantiles + masks)
         train_df, val_df, test_df = train_val_test_split_by_time(
@@ -124,49 +125,88 @@ class processor():
         input_cols = self.config["input_cols"]
         target_col = self.config["target"]
 
+        # Convert input columns to torch tensors for scaler fitting
         train_X = torch.tensor(train_df.select(input_cols).to_numpy(), dtype=torch.float64)
         val_X = torch.tensor(val_df.select(input_cols).to_numpy(), dtype=torch.float64)
         test_X = torch.tensor(test_df.select(input_cols).to_numpy(), dtype=torch.float64)
 
         feature_scaler = TorchStandardScaler()
         feature_scaler.fit(train_X)
-        self.train_X_scaled = feature_scaler.transform(train_X)
-        self.val_X_scaled = feature_scaler.transform(val_X)
-        self.test_X_scaled = feature_scaler.transform(test_X)
+        train_X_scaled_t = feature_scaler.transform(train_X)
+        val_X_scaled_t = feature_scaler.transform(val_X)
+        test_X_scaled_t = feature_scaler.transform(test_X)
 
+        # Convert scaled tensors back to Polars DataFrames and attach site/time columns
+        train_scaled_arr = train_X_scaled_t.numpy()
+        val_scaled_arr = val_X_scaled_t.numpy()
+        test_scaled_arr = test_X_scaled_t.numpy()
+
+        train_scaled_df = pl.DataFrame(train_scaled_arr, schema=input_cols)
+        val_scaled_df = pl.DataFrame(val_scaled_arr, schema=input_cols)
+        test_scaled_df = pl.DataFrame(test_scaled_arr, schema=input_cols)
+
+        # Preserve site_id and observation_hour for alignment and downstream processing
+        train_scaled_df = pl.concat([train_df.select(["site_id", "observation_hour"]), train_scaled_df], how="horizontal")
+        val_scaled_df = pl.concat([val_df.select(["site_id", "observation_hour"]), val_scaled_df], how="horizontal")
+        test_scaled_df = pl.concat([test_df.select(["site_id", "observation_hour"]), test_scaled_df], how="horizontal")
+
+        self.train_X_scaled = train_scaled_df
+        self.val_X_scaled = val_scaled_df
+        self.test_X_scaled = test_scaled_df
+
+        # Scale targets and keep as DataFrames as well
         train_y = torch.tensor(train_df[target_col].to_numpy(), dtype=torch.float64).reshape(-1, 1)
         val_y = torch.tensor(val_df[target_col].to_numpy(), dtype=torch.float64).reshape(-1, 1)
         test_y = torch.tensor(test_df[target_col].to_numpy(), dtype=torch.float64).reshape(-1, 1)
 
         target_scaler = TorchStandardScaler()
         target_scaler.fit(train_y)
-        self.train_y_scaled = target_scaler.transform(train_y).squeeze()
-        self.val_y_scaled = target_scaler.transform(val_y).squeeze()
-        self.test_y_scaled = target_scaler.transform(test_y).squeeze()
+        train_y_scaled_t = target_scaler.transform(train_y).squeeze()
+        val_y_scaled_t = target_scaler.transform(val_y).squeeze()
+        test_y_scaled_t = target_scaler.transform(test_y).squeeze()
+
+        self.train_y_scaled = pl.DataFrame(train_y_scaled_t.numpy(), schema=[target_col])
+        self.val_y_scaled = pl.DataFrame(val_y_scaled_t.numpy(), schema=[target_col])
+        self.test_y_scaled = pl.DataFrame(test_y_scaled_t.numpy(), schema=[target_col])
 
         self.train_sites = train_df["site_id"].to_numpy()
         self.val_sites = val_df["site_id"].to_numpy()
         self.test_sites = test_df["site_id"].to_numpy()
+        # store observation times (as ISO strings) aligned with the X arrays
+        # do not store test_times per request
     def return_outputs(self):
-        return (self.train_X_scaled, self.val_X_scaled, self.test_X_scaled,
-                self.train_y_scaled, self.val_y_scaled, self.test_y_scaled,
-                self.train_sites, self.val_sites, self.test_sites,
-                self.feature_scaler, self.target_scaler)
+        return (
+            self.train_X_scaled,
+            self.val_X_scaled,
+            self.test_X_scaled,
+            self.train_y_scaled,
+            self.val_y_scaled,
+            self.test_y_scaled,
+            self.train_sites,
+            self.val_sites,
+            self.test_sites,
+            self.feature_scaler,
+            self.target_scaler,
+        )
     def save_to_wandb(self, artifact_name, artifact_type, artifact_description, out_dir):
 
         os.makedirs(out_dir, exist_ok=True)
 
         # Save scaled arrays (tensors -> numpy for .npy)
-        np.save(f"{out_dir}/train_X_scaled.npy", self.train_X_scaled.numpy())
-        np.save(f"{out_dir}/val_X_scaled.npy", self.val_X_scaled.numpy())
-        np.save(f"{out_dir}/test_X_scaled.npy", self.test_X_scaled.numpy())
-        np.save(f"{out_dir}/train_y_scaled.npy", self.train_y_scaled.numpy())
-        np.save(f"{out_dir}/val_y_scaled.npy", self.val_y_scaled.numpy())
-        np.save(f"{out_dir}/test_y_scaled.npy", self.test_y_scaled.numpy())
+        # Save scaled arrays (DataFrames -> numpy for .npy)
+        # X DataFrames include site_id and observation_hour as first two columns
+        np.save(f"{out_dir}/train_X_scaled.npy", self.train_X_scaled.to_numpy())
+        np.save(f"{out_dir}/val_X_scaled.npy", self.val_X_scaled.to_numpy())
+        np.save(f"{out_dir}/test_X_scaled.npy", self.test_X_scaled.to_numpy())
+        np.save(f"{out_dir}/train_y_scaled.npy", self.train_y_scaled.to_numpy())
+        np.save(f"{out_dir}/val_y_scaled.npy", self.val_y_scaled.to_numpy())
+        np.save(f"{out_dir}/test_y_scaled.npy", self.test_y_scaled.to_numpy())
 
         np.save(f"{out_dir}/train_sites.npy", self.train_sites)
         np.save(f"{out_dir}/val_sites.npy", self.val_sites)
         np.save(f"{out_dir}/test_sites.npy", self.test_sites)
+        # save observation times
+        # do not save train/val/test times per request
 
         joblib.dump(self.feature_scaler, f"{out_dir}/feature_scaler.pkl")
         joblib.dump(self.target_scaler, f"{out_dir}/target_scaler.pkl")

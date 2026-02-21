@@ -33,10 +33,6 @@ config = {
 df = pull_wandb(config["file_name"],config["file_path"],config['n_rows'])
 pcr = processor(config)
 
-train_X_scaled, val_X_scaled, test_X_scaled, train_y_scaled, val_y_scaled, test_y_scaled, train_sites, val_sites, test_sites, feature_scaler, target_scaler = pcr.return_outputs()
-
-print(train_X_scaled)
-
 
 #example of how to set up your model sasha
 
