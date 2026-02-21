@@ -15,6 +15,12 @@ def pull_wandb(file_name: str,file_path: str = None,n_rows: int | None = None) -
         f"connorjsmith28-rice-university/flood-forecasting/{file_path}:latest"
     )
     artifact_dir = artifact.download()
-    return pl.read_parquet(
+    df = pl.read_parquet(
         f"{artifact_dir}/{file_name}.parquet",
-        n_rows=n_rows,)
+        n_rows=55000,
+    )
+    return (
+        df.filter(pl.col("site_id").cast(pl.Utf8) == "06923250")
+        .sort("observation_hour")
+        .head(100)
+    )
