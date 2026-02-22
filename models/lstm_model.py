@@ -9,7 +9,7 @@ Downloads preprocessed data from the W&B artifact produced by missouri_preproces
 import wandb
 import numpy as np
 import joblib
-from SRC.helper_functions.helpers import pull_wandb
+from SRC.helper_functions.helpers import shift_df
 from SRC.helper_functions.preprocessing import processor
 config = {
     "input_cols": [
@@ -46,7 +46,8 @@ pcr.pull_duckdb()
     target_scaler,
 ) = pcr.return_outputs()
 
-
+df = shift_df(train_X_scaled, config["input_cols"], 7)
+df
 #example of how to set up your model sasha
 
 ##

@@ -54,3 +54,12 @@ def pull_duckdb(file_name: str, limit: int | None = None) -> pl.DataFrame:
         con.close()
 
     return df
+def shift_df(df: pl.DataFrame, input_cols, shift_by: int) -> pl.DataFrame:
+    exprs = []
+    for val in input_cols:
+        if val in ["latitude", "longitude"]:
+            continue
+        for idx in range(shift_by):
+                exprs.append(pl.col(val).shift(idx).alias(f"{val}{idx}"))
+
+    return df.with_columns(exprs)

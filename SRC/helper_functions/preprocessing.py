@@ -84,7 +84,6 @@ class processor():
         self.preprocess()
     def pull_duckdb(self):
         self.df = pull_duckdb(self.config["table"], self.config["n_rows"])
-        print(self.df.head())
         self.preprocess()
          
     def preprocess(self):
@@ -114,7 +113,14 @@ class processor():
         )
         # drop rows where target is null (last 24 rows per site after shift)
         df = df.drop_nulls(subset=[target_col])
+        exprs = []
+        for val in self.config["input_cols"]:
+            if val in ["latitude", "longitude"]:
+                continue
+            for idx in range(7):
+                exprs.append(pl.col(val).shift(idx).alias(f"{val}{idx}"))
 
+        df= df.with_columns(exprs)
         # 5. Split by time (torch quantiles + masks)
         train_df, val_df, test_df = train_val_test_split_by_time(
             df,
