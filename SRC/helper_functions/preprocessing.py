@@ -3,10 +3,8 @@ import joblib
 import numpy as np
 import polars as pl
 import torch
-import torch.nn as nn
 import wandb
 from SRC.helper_functions.helpers import pull_wandb,pull_duckdb
-import wandb
 
 class TorchStandardScaler:
     """StandardScaler for PyTorch tensors: z = (x - mean) / std. Fit on train, then transform."""
@@ -16,9 +14,11 @@ class TorchStandardScaler:
         self.scale_: torch.Tensor | None = None
 
     def fit(self, X: torch.Tensor) -> "TorchStandardScaler":
-        self.mean_ = X.to(torch.float64).mean(dim=0)
-        self.scale_ = X.to(torch.float64).std(dim=0)
+        self.mean_ = X.to(torch.float64).nanmean(dim=0)
+        variance = ((X.to(torch.float64) - self.mean_) ** 2).nanmean(dim=0)
+        self.scale_ = variance.sqrt()
         self.scale_[self.scale_ == 0] = 1.0
+        self.scale_[torch.isnan(self.scale_)] = 1.0
         return self
 
     def transform(self, X: torch.Tensor) -> torch.Tensor:
@@ -64,7 +64,21 @@ def train_val_test_split_by_time(
     test_df = df.filter(pl.int_range(0, df.height).is_in(pl.Series(test_idx)))
     
     return train_df, val_df, test_df
+
 class processor():
+    """
+    This class is used to preprocess the data.
+    The config file should contain the following keys:
+    - input_cols: list of columns to include in the model
+    - target: the column to predict
+    - train_split: the fraction of the data to use for training
+    - val_split: the fraction of the data to use for validation
+    - n_rows: the number of rows to read from the W&B artifact or DuckDB table
+    - file_path: the path to the W&B artifact
+    - file_name: the name of the W&B artifact
+    - table: the name of the DuckDB table
+    - lag_window: the number of hours to lag the data
+    """
     def __init__(self, config: dict) -> None:
         self.config = config
         self.df = None
@@ -79,6 +93,7 @@ class processor():
         self.test_sites = None
         self.feature_scaler = None
         self.target_scaler = None
+
     def pull_wandb(self):
         self.df = pull_wandb(self.config["file_name"],self.config["file_path"],self.config['n_rows'])
         self.preprocess()
@@ -98,7 +113,6 @@ class processor():
         # 2. Select features and filter
         features = ["site_id", "observation_hour"] + self.config["input_cols"]
         df = df.select(features)
-        #df = df.drop_nulls(subset=["gage_height_ft_mean", "streamflow_cfs_mean"])
 
         # 3. Sort by site and time (required for LSTM sequences)
         df = df.sort(["site_id", "observation_hour"])
@@ -111,16 +125,28 @@ class processor():
             .over("site_id")
             .alias(target_col)
         )
+
         # drop rows where target is null (last 24 rows per site after shift)
         df = df.drop_nulls(subset=[target_col])
+        df = df.drop_nulls(subset=["gage_height_ft_mean", "streamflow_cfs_mean"])
+
+        # Adds a lag for the last 7 hours of the data
         exprs = []
         for val in self.config["input_cols"]:
             if val in ["latitude", "longitude"]:
                 continue
-            for idx in range(7):
-                exprs.append(pl.col(val).shift(idx).alias(f"{val}{idx}"))
+            for idx in range(1, self.config["lag_window"]):
+                exprs.append(pl.col(val).shift(idx).over("site_id").alias(f"{val}{idx}"))
 
         df= df.with_columns(exprs)
+
+        original_cols = [v for v in self.config["input_cols"] if v not in ["latitude", "longitude"]]
+        static_cols = [v for v in self.config["input_cols"] if v in ["latitude", "longitude"]]
+        lagged_cols = [f"{val}{idx}" for val in self.config["input_cols"] 
+                       if val not in ["latitude", "longitude"] 
+                       for idx in range(1, self.config["lag_window"])]
+        model_input_cols = original_cols + static_cols + lagged_cols
+
         # 5. Split by time (torch quantiles + masks)
         train_df, val_df, test_df = train_val_test_split_by_time(
             df,
@@ -130,13 +156,12 @@ class processor():
         )
 
         # 6. Convert to tensors and scale with TorchStandardScaler (keep as tensors)
-        input_cols = self.config["input_cols"]
         target_col = self.config["target"]
 
         # Convert input columns to torch tensors for scaler fitting
-        train_X = torch.tensor(train_df.select(input_cols).to_numpy(), dtype=torch.float64)
-        val_X = torch.tensor(val_df.select(input_cols).to_numpy(), dtype=torch.float64)
-        test_X = torch.tensor(test_df.select(input_cols).to_numpy(), dtype=torch.float64)
+        train_X = torch.tensor(train_df.select(model_input_cols).to_numpy(), dtype=torch.float64)
+        val_X = torch.tensor(val_df.select(model_input_cols).to_numpy(), dtype=torch.float64)
+        test_X = torch.tensor(test_df.select(model_input_cols).to_numpy(), dtype=torch.float64)
 
         feature_scaler = TorchStandardScaler()
         feature_scaler.fit(train_X)
@@ -149,9 +174,9 @@ class processor():
         val_scaled_arr = val_X_scaled_t.numpy()
         test_scaled_arr = test_X_scaled_t.numpy()
 
-        train_scaled_df = pl.DataFrame(train_scaled_arr, schema=input_cols)
-        val_scaled_df = pl.DataFrame(val_scaled_arr, schema=input_cols)
-        test_scaled_df = pl.DataFrame(test_scaled_arr, schema=input_cols)
+        train_scaled_df = pl.DataFrame(train_scaled_arr, schema=model_input_cols)
+        val_scaled_df = pl.DataFrame(val_scaled_arr, schema=model_input_cols)
+        test_scaled_df = pl.DataFrame(test_scaled_arr, schema=model_input_cols)
 
         # Preserve site_id and observation_hour for alignment and downstream processing
         train_scaled_df = pl.concat([train_df.select(["site_id", "observation_hour"]), train_scaled_df], how="horizontal")
@@ -191,6 +216,7 @@ class processor():
         self.test_sites = test_df["site_id"].to_numpy()
         # store observation times (as ISO strings) aligned with the X arrays
         # do not store test_times per request
+    
     def return_outputs(self):
         return (
             self.train_X_scaled,
@@ -205,6 +231,7 @@ class processor():
             self.feature_scaler,
             self.target_scaler,
         )
+        
     def save_to_wandb(self, artifact_name, artifact_type, artifact_description, out_dir):
 
         os.makedirs(out_dir, exist_ok=True)

@@ -5,12 +5,13 @@ Target: streamflow_cfs_target_24h
 
 Downloads preprocessed data from the W&B artifact produced by missouri_preprocessing.py
 """
-
+import torch
+import polars as pl
 import wandb
 import numpy as np
 import joblib
-from SRC.helper_functions.helpers import shift_df
 from SRC.helper_functions.preprocessing import processor
+
 config = {
     "input_cols": [
         "latitude",
@@ -21,33 +22,20 @@ config = {
         "temperature_c",
         "specific_humidity_kgkg",
     ], 
-    "target": "streamflow_cfs_mean",
+    "target": "streamflow_cfs_target_24h",
     "train_split": 0.8,
     "val_split": 0.9,
-    "n_rows": 100,
+    "n_rows": 50000,
     "file_path": "flood-dataset-missouri",
     "file_name": "flood_model_missouri",
-    "table": "wandb.flood_model_missouri"
+    "table": "wandb.flood_model_missouri",
+    "lag_window": 7
 }
 
 pcr = processor(config)
-pcr.pull_duckdb()
-(
-    train_X_scaled,
-    val_X_scaled,
-    test_X_scaled,
-    train_y_scaled,
-    val_y_scaled,
-    test_y_scaled,
-    train_sites,
-    val_sites,
-    test_sites,
-    feature_scaler,
-    target_scaler,
-) = pcr.return_outputs()
+pcr.pull_wandb()
+train_X, val_X, test_X, train_y, val_y, test_y, train_sites, val_sites, test_sites, feature_scaler, target_scaler = pcr.return_outputs()
 
-df = shift_df(train_X_scaled, config["input_cols"], 7)
-df
 #example of how to set up your model sasha
 
 ##
