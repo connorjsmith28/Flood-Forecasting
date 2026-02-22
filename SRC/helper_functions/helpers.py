@@ -3,18 +3,34 @@ import polars as pl
 from pathlib import Path
 import duckdb
 
-def pull_wandb(file_name: str, file_path: str = None, n_rows: int | None = None,site:int | None=None) -> pl.DataFrame:
+def pull_wandb(
+    file_name: str,
+    file_path: str = None,
+    site: str | None = None,
+    sites: list[str] | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> pl.DataFrame:
     api = wandb.Api(timeout=60)
     artifact = api.artifact(f"connorjsmith28-rice-university/flood-forecasting/{file_path}:latest")
     artifact_dir = artifact.download()
     df = pl.read_parquet(
         f"{artifact_dir}/{file_name}.parquet",
     )
-    # filter to site 06923250 and only noon observations, will change this later
-    df = df.filter(pl.col("site_id").cast(pl.Utf8) == site)
+    # Filter by site(s)
+    if sites is not None:
+        df = df.filter(pl.col("site_id").cast(pl.Utf8).is_in(sites))
+    elif site is not None:
+        df = df.filter(pl.col("site_id").cast(pl.Utf8) == site)
+    # Filter to noon observations
     df = df.filter(pl.col("observation_hour").dt.hour() == 12)
-    df = df.sort("observation_hour")
-    return df.head(n_rows)
+    # Filter by date range
+    if start_date is not None:
+        df = df.filter(pl.col("observation_hour") >= pl.lit(start_date).str.to_datetime())
+    if end_date is not None:
+        df = df.filter(pl.col("observation_hour") <= pl.lit(end_date).str.to_datetime())
+    df = df.sort(["site_id", "observation_hour"])
+    return df
  
 
 def pull_duckdb(
