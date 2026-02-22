@@ -17,25 +17,48 @@ def pull_wandb(file_name: str, file_path: str = None, n_rows: int | None = None,
     return df.head(n_rows)
  
 
-def pull_duckdb(file_name: str, limit: int | None = None,site:int | None=None) -> pl.DataFrame:
+def pull_duckdb(
+    file_name: str,
+    site: int | str | None = None,
+    sites: list[str] | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> pl.DataFrame:
     """Query the local DuckDB file and return a Polars DataFrame.
+
+    Args:
+        file_name: DuckDB table name (e.g. 'wandb.flood_model_missouri').
+        site: Single site ID string (legacy, kept for backward compat).
+        sites: List of site ID strings. If provided, overrides `site`.
+        start_date: Inclusive start date string, e.g. '2015-01-01'.
+        end_date: Inclusive end date string, e.g. '2024-12-31'.
 
     The DuckDB file `flood_forecasting.duckdb` is expected at the repository root.
     """
-    # resolve repo root relative to this file (SRC/helper_functions/helpers.py)
     repo_root = Path(__file__).resolve().parents[2]
     db_path = repo_root / "flood_forecasting.duckdb"
     if not db_path.exists():
         raise FileNotFoundError(f"DuckDB file not found at {db_path}")
 
-    # open connection after verifying path
     con = duckdb.connect(database=str(db_path), read_only=True)
-    limit_clause = f" LIMIT {int(limit)}" if limit is not None else ""
-    # hard-coded filters: site_id '06923250' and observation_hour at 12:00
+
+    # Build WHERE clause
+    where_parts = ["EXTRACT(HOUR FROM observation_hour) = 12"]
+    if sites is not None:
+        quoted = ", ".join(f"'{s}'" for s in sites)
+        where_parts.append(f"site_id IN ({quoted})")
+    elif site is not None:
+        where_parts.append(f"site_id = '{site}'")
+    if start_date is not None:
+        where_parts.append(f"observation_hour >= '{start_date}'")
+    if end_date is not None:
+        where_parts.append(f"observation_hour <= '{end_date}'")
+
+    where_clause = " AND ".join(where_parts)
     sql = (
         f"SELECT * FROM {file_name} "
-        f"WHERE site_id = '{site}' AND EXTRACT(HOUR FROM observation_hour) = 12 "
-        f"ORDER BY observation_hour{limit_clause};"
+        f"WHERE {where_clause} "
+        f"ORDER BY site_id, observation_hour;"
     )
 
     try:
