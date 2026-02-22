@@ -5,7 +5,7 @@ import polars as pl
 import torch
 import torch.nn as nn
 import wandb
-from SRC.helper_functions.helpers import pull_wandb
+from SRC.helper_functions.helpers import pull_wandb,pull_duckdb
 import wandb
 
 class TorchStandardScaler:
@@ -79,11 +79,13 @@ class processor():
         self.test_sites = None
         self.feature_scaler = None
         self.target_scaler = None
-        self.pull_data()
-        self.preprocess()
-
-    def pull_data(self):
+    def pull_wandb(self):
         self.df = pull_wandb(self.config["file_name"],self.config["file_path"],self.config['n_rows'])
+        self.preprocess()
+    def pull_duckdb(self):
+        self.df = pull_duckdb(self.config["table"], self.config["n_rows"])
+        print(self.df.head())
+        self.preprocess()
         
     def preprocess(self):
         """
@@ -161,13 +163,22 @@ class processor():
 
         target_scaler = TorchStandardScaler()
         target_scaler.fit(train_y)
-        train_y_scaled_t = target_scaler.transform(train_y).squeeze()
-        val_y_scaled_t = target_scaler.transform(val_y).squeeze()
-        test_y_scaled_t = target_scaler.transform(test_y).squeeze()
+        # keep as 2D arrays when converting back to numpy to avoid zero-dim issues
+        train_y_scaled_t = target_scaler.transform(train_y)
+        val_y_scaled_t = target_scaler.transform(val_y)
+        test_y_scaled_t = target_scaler.transform(test_y)
 
-        self.train_y_scaled = pl.DataFrame(train_y_scaled_t.numpy(), schema=[target_col])
-        self.val_y_scaled = pl.DataFrame(val_y_scaled_t.numpy(), schema=[target_col])
-        self.test_y_scaled = pl.DataFrame(test_y_scaled_t.numpy(), schema=[target_col])
+        train_y_arr = train_y_scaled_t.detach().cpu().numpy().reshape(-1, 1)
+        val_y_arr = val_y_scaled_t.detach().cpu().numpy().reshape(-1, 1)
+        test_y_arr = test_y_scaled_t.detach().cpu().numpy().reshape(-1, 1)
+
+        self.train_y_scaled = pl.DataFrame(train_y_arr, schema=[target_col])
+        self.val_y_scaled = pl.DataFrame(val_y_arr, schema=[target_col])
+        self.test_y_scaled = pl.DataFrame(test_y_arr, schema=[target_col])
+
+        # store scalers on the instance for downstream use
+        self.feature_scaler = feature_scaler
+        self.target_scaler = target_scaler
 
         self.train_sites = train_df["site_id"].to_numpy()
         self.val_sites = val_df["site_id"].to_numpy()
