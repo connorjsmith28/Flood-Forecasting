@@ -86,7 +86,7 @@ class processor():
         self.df = pull_duckdb(self.config["table"], self.config["n_rows"])
         print(self.df.head())
         self.preprocess()
-        
+         
     def preprocess(self):
         """
         Pipeline: load -> select -> filter -> sort -> add target -> split by time -> scale (TorchStandardScaler).
