@@ -1,29 +1,20 @@
 import wandb
 import polars as pl
 from pathlib import Path
-import re
-import wandb
 import duckdb
 
-def pull_wandb(file_name: str,file_path: str = None,n_rows: int | None = None) -> pl.DataFrame:
-    run = wandb.init(
-        project="flood-forecasting",
-        entity="connorjsmith28-rice-university",
-        job_type="preprocessing"
-    )
-    artifact = run.use_artifact(
-        f"connorjsmith28-rice-university/flood-forecasting/{file_path}:latest"
-    )
+def pull_wandb(file_name: str, file_path: str = None, n_rows: int | None = None) -> pl.DataFrame:
+    api = wandb.Api(timeout=60)
+    artifact = api.artifact(f"connorjsmith28-rice-university/flood-forecasting/{file_path}:latest")
     artifact_dir = artifact.download()
     df = pl.read_parquet(
         f"{artifact_dir}/{file_name}.parquet",
-        n_rows=55000,
     )
-    # filter to site 06923250 and only noon observations, then sort and return first 100
+    # filter to site 06923250 and only noon observations, will change this later
     df = df.filter(pl.col("site_id").cast(pl.Utf8) == "06923250")
     df = df.filter(pl.col("observation_hour").dt.hour() == 12)
     df = df.sort("observation_hour")
-    return df.head(100)
+    return df.head(n_rows)
  
 
 def pull_duckdb(file_name: str, limit: int | None = None) -> pl.DataFrame:
@@ -54,12 +45,3 @@ def pull_duckdb(file_name: str, limit: int | None = None) -> pl.DataFrame:
         con.close()
 
     return df
-def shift_df(df: pl.DataFrame, input_cols, shift_by: int) -> pl.DataFrame:
-    exprs = []
-    for val in input_cols:
-        if val in ["latitude", "longitude"]:
-            continue
-        for idx in range(shift_by):
-                exprs.append(pl.col(val).shift(idx).alias(f"{val}{idx}"))
-
-    return df.with_columns(exprs)
