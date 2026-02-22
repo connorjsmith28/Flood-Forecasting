@@ -21,17 +21,30 @@ config = {
         "temperature_c",
         "specific_humidity_kgkg",
     ], 
-    "target": "streamflow_cfs_target_24h",
+    "target": "streamflow_cfs_mean",
     "train_split": 0.8,
     "val_split": 0.9,
     "n_rows": 100,
     "file_path": "flood-dataset-missouri",
-    "file_name": "flood_model_missouri"
+    "file_name": "flood_model_missouri",
+    "table": "wandb.flood_model_missouri"
 }
 
-
-df = pull_wandb(config["file_name"],config["file_path"],config['n_rows'])
 pcr = processor(config)
+pcr.pull_duckdb()
+(
+    train_X_scaled,
+    val_X_scaled,
+    test_X_scaled,
+    train_y_scaled,
+    val_y_scaled,
+    test_y_scaled,
+    train_sites,
+    val_sites,
+    test_sites,
+    feature_scaler,
+    target_scaler,
+) = pcr.return_outputs()
 
 
 #example of how to set up your model sasha

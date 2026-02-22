@@ -24,7 +24,7 @@ def pull_wandb(file_name: str,file_path: str = None,n_rows: int | None = None) -
     df = df.filter(pl.col("observation_hour").dt.hour() == 12)
     df = df.sort("observation_hour")
     return df.head(100)
-
+ 
 
 def pull_duckdb(file_name: str, limit: int | None = None) -> pl.DataFrame:
     """Query the local DuckDB file and return a Polars DataFrame.
