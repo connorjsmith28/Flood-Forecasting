@@ -94,7 +94,7 @@ class processor():
         self.df = pull_wandb(
             self.config["file_name"],
             self.config["file_path"],
-            sites=self.config["sites"],
+            sites=self.config.get("sites"),
             start_date=self.config.get("start_date"),
             end_date=self.config.get("end_date"),
             frequency=self.config.get("frequency"),
@@ -104,7 +104,7 @@ class processor():
     def pull_duckdb(self):
         self.df = pull_duckdb(
             self.config["table"],
-            sites=self.config["sites"],
+            sites=self.config.get("sites"),
             start_date=self.config.get("start_date"),
             end_date=self.config.get("end_date"),
             frequency=self.config.get("frequency"),
