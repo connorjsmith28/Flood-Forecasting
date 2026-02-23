@@ -73,7 +73,6 @@ class processor():
     - target: the column to predict
     - train_split: the fraction of the data to use for training
     - val_split: the fraction of the data to use for validation
-    - n_rows: the number of rows to read from the W&B artifact or DuckDB table
     - file_path: the path to the W&B artifact
     - file_name: the name of the W&B artifact
     - table: the name of the DuckDB table
@@ -98,6 +97,7 @@ class processor():
             sites=self.config["sites"],
             start_date=self.config.get("start_date"),
             end_date=self.config.get("end_date"),
+            frequency=self.config.get("frequency"),
         )
         self.preprocess()
 
@@ -107,6 +107,7 @@ class processor():
             sites=self.config["sites"],
             start_date=self.config.get("start_date"),
             end_date=self.config.get("end_date"),
+            frequency=self.config.get("frequency"),
         )
         self.preprocess()
          
@@ -127,9 +128,11 @@ class processor():
         # 3. Sort by site and time (required for LSTM sequences)
         df = df.sort(["site_id", "observation_hour"])
 
+        shift_amount = 1 if self.config.get("frequency") == "daily" else 24
+
         df = df.with_columns(
             pl.col("streamflow_cfs_mean")
-            .shift(-24)
+            .shift(-shift_amount)
             .over("site_id")
             .alias(self.target_col)
 )
@@ -235,26 +238,22 @@ class processor():
         )
         
     def save_to_wandb(self, artifact_name, artifact_type, artifact_description, out_dir):
-
         os.makedirs(out_dir, exist_ok=True)
 
-        # Save scaled arrays (tensors -> numpy for .npy)
-        # Save scaled arrays (DataFrames -> numpy for .npy)
-        # X DataFrames include site_id and observation_hour as first two columns
-        np.save(f"{out_dir}/train_X_scaled.npy", self.train_X_scaled.to_numpy())
-        np.save(f"{out_dir}/val_X_scaled.npy", self.val_X_scaled.to_numpy())
-        np.save(f"{out_dir}/test_X_scaled.npy", self.test_X_scaled.to_numpy())
+        # Save X as parquet (preserves site_id string and observation_hour datetime)
+        self.train_X_scaled.write_parquet(f"{out_dir}/train_X_scaled.parquet")
+        self.val_X_scaled.write_parquet(f"{out_dir}/val_X_scaled.parquet")
+        self.test_X_scaled.write_parquet(f"{out_dir}/test_X_scaled.parquet")
+
+        # Save y as npy (purely numeric)
         np.save(f"{out_dir}/train_y_scaled.npy", self.train_y_scaled.to_numpy())
         np.save(f"{out_dir}/val_y_scaled.npy", self.val_y_scaled.to_numpy())
         np.save(f"{out_dir}/test_y_scaled.npy", self.test_y_scaled.to_numpy())
-        # save observation times
-        # do not save train/val/test times per request
 
         joblib.dump(self.feature_scaler, f"{out_dir}/feature_scaler.pkl")
         joblib.dump(self.target_scaler, f"{out_dir}/target_scaler.pkl")
 
         run = wandb.run
-        #sasha please test and modularize code below to helpers
         if run is not None:
             artifact = wandb.Artifact(
                 name=artifact_name,
@@ -265,7 +264,6 @@ class processor():
             run.log_artifact(artifact, aliases=["latest"])
             run.finish()
             print("\nPipeline outputs uploaded to W&B.")
-        #todo write to return output
 
 def safe_drop(df, cols):
     existing = [c for c in cols if c in df.columns]
