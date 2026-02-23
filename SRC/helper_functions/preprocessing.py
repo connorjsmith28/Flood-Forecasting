@@ -81,13 +81,15 @@ class processor():
     """
     def __init__(self, config: dict) -> None:
         self.config = config
-        self.dfs = []
-        self.train_X_scaled = []
-        self.val_X_scaled = []
-        self.test_X_scaled = []
-        self.train_y_scaled = []
-        self.val_y_scaled = []
-        self.test_y_scaled = []
+        self.df: pl.DataFrame | None = None
+        self.train_X_scaled: pl.DataFrame | None = None
+        self.val_X_scaled: pl.DataFrame | None = None
+        self.test_X_scaled: pl.DataFrame | None = None
+        self.train_y_scaled: pl.DataFrame | None = None
+        self.val_y_scaled: pl.DataFrame | None = None
+        self.test_y_scaled: pl.DataFrame | None = None
+        self.feature_scaler = TorchStandardScaler()
+        self.target_scaler = TorchStandardScaler()
 
     def pull_wandb(self):
         self.df = pull_wandb(
@@ -98,6 +100,7 @@ class processor():
             end_date=self.config.get("end_date"),
         )
         self.preprocess()
+
     def pull_duckdb(self):
         self.df = pull_duckdb(
             self.config["table"],
@@ -115,106 +118,108 @@ class processor():
         X and y are torch.Tensor; sites are numpy (string IDs).
         """
         # 1. Load (optional config["n_rows"] limits rows read from artifact)
-        dfs = self.dfs
-        for df in dfs:
-            # 2. Select features and filter
-            features = ["site_id", "observation_hour"] + self.config["input_cols"]
-            df = df.select(features)
+        df = self.df
+        self.target_col = self.config["target"]
+        # 2. Select features and filter
+        features = ["site_id", "observation_hour"] + self.config["input_cols"]
+        df = df.select(features)
 
-            # 3. Sort by site and time (required for LSTM sequences)
-            df = df.sort(["site_id", "observation_hour"])
+        # 3. Sort by site and time (required for LSTM sequences)
+        df = df.sort(["site_id", "observation_hour"])
 
-            # 4. Create target: streamflow 24h ahead (shift within each site)
-            target_col = self.config["target"]
-            df = df.with_columns(
-                pl.col("streamflow_cfs_mean")
-                .shift(-24)
-                .over("site_id")
-                .alias(target_col)
-            )
+        df = df.with_columns(
+            pl.col("streamflow_cfs_mean")
+            .shift(-24)
+            .over("site_id")
+            .alias(self.target_col)
+)
+        # drop rows where target is null (last 24 rows per site after shift)
+        df = df.drop_nulls(subset=[self.target_col])
 
-            # drop rows where target is null (last 24 rows per site after shift)
-            df = df.drop_nulls(subset=[target_col])
-            df = df.drop_nulls(subset=["gage_height_ft_mean", "streamflow_cfs_mean"])
+        # Adds a lag for the last 7 hours of the data
+        exprs = []
+        for val in self.config["input_cols"]:
+            if val in ["latitude", "longitude"]:
+                continue
+            for idx in range(1, self.config["lag_window"]):
+                exprs.append(pl.col(val).shift(idx).over("site_id").alias(f"{val}{idx}"))
 
-            # Adds a lag for the last 7 hours of the data
-            exprs = []
-            for val in self.config["input_cols"]:
-                if val in ["latitude", "longitude"]:
-                    continue
-                for idx in range(1, self.config["lag_window"]):
-                    exprs.append(pl.col(val).shift(idx).over("site_id").alias(f"{val}{idx}"))
+        df= df.with_columns(exprs)
 
-            df= df.with_columns(exprs)
+        original_cols = [v for v in self.config["input_cols"] if v not in ["latitude", "longitude"]]
+        static_cols = [v for v in self.config["input_cols"] if v in ["latitude", "longitude"]]
+        lagged_cols = [f"{val}{idx}" for val in self.config["input_cols"] 
+                    if val not in ["latitude", "longitude"] 
+                    for idx in range(1, self.config["lag_window"])]
+        model_input_cols = original_cols + static_cols + lagged_cols
 
-            original_cols = [v for v in self.config["input_cols"] if v not in ["latitude", "longitude"]]
-            static_cols = [v for v in self.config["input_cols"] if v in ["latitude", "longitude"]]
-            lagged_cols = [f"{val}{idx}" for val in self.config["input_cols"] 
-                        if val not in ["latitude", "longitude"] 
-                        for idx in range(1, self.config["lag_window"])]
-            model_input_cols = original_cols + static_cols + lagged_cols
+        df = df.drop_nulls(subset=lagged_cols)
 
-            # 5. Split by time (torch quantiles + masks)
-            train_df, val_df, test_df = train_val_test_split_by_time(
-                df,
-                "observation_hour",
-                self.config["train_split"],
-                self.config["val_split"],
-            )
+        # 5. Split by time (torch quantiles + masks)
+        train_df, val_df, test_df = train_val_test_split_by_time(
+            df,
+            "observation_hour",
+            self.config["train_split"],
+            self.config["val_split"],
+        )
 
-            # 6. Convert to tensors and scale with TorchStandardScaler (keep as tensors)
-            target_col = self.config["target"]
+        # 6. Convert to tensors and scale with TorchStandardScaler (keep as tensors)
+        target_col = self.config["target"]
 
-            # Convert input columns to torch tensors for scaler fitting
-            train_X = torch.tensor(train_df.select(model_input_cols).to_numpy(), dtype=torch.float64)
-            val_X = torch.tensor(val_df.select(model_input_cols).to_numpy(), dtype=torch.float64)
-            test_X = torch.tensor(test_df.select(model_input_cols).to_numpy(), dtype=torch.float64)
+        # Convert input columns to torch tensors for scaler fitting
+        train_X = torch.tensor(train_df.select(model_input_cols).to_numpy(), dtype=torch.float64)
+        val_X = torch.tensor(val_df.select(model_input_cols).to_numpy(), dtype=torch.float64)
+        test_X = torch.tensor(test_df.select(model_input_cols).to_numpy(), dtype=torch.float64)
 
-            feature_scaler = TorchStandardScaler()
-            feature_scaler.fit(train_X)
-            train_X_scaled_t = feature_scaler.transform(train_X)
-            val_X_scaled_t = feature_scaler.transform(val_X)
-            test_X_scaled_t = feature_scaler.transform(test_X)
+        feature_scaler = TorchStandardScaler()
+        feature_scaler.fit(train_X)
+        self.feature_scaler = feature_scaler
 
-            # Convert scaled tensors back to Polars DataFrames and attach site/time columns
-            train_scaled_arr = train_X_scaled_t.numpy()
-            val_scaled_arr = val_X_scaled_t.numpy()
-            test_scaled_arr = test_X_scaled_t.numpy()
+        train_X_scaled_t = feature_scaler.transform(train_X)
+        val_X_scaled_t = feature_scaler.transform(val_X)
+        test_X_scaled_t = feature_scaler.transform(test_X)
 
-            train_scaled_df = pl.DataFrame(train_scaled_arr, schema=model_input_cols)
-            val_scaled_df = pl.DataFrame(val_scaled_arr, schema=model_input_cols)
-            test_scaled_df = pl.DataFrame(test_scaled_arr, schema=model_input_cols)
+        # Convert scaled tensors back to Polars DataFrames and attach site/time columns
+        train_scaled_arr = train_X_scaled_t.numpy()
+        val_scaled_arr = val_X_scaled_t.numpy()
+        test_scaled_arr = test_X_scaled_t.numpy()
 
-            # Preserve site_id and observation_hour for alignment and downstream processing
-            train_scaled_df = pl.concat([train_df.select(["site_id", "observation_hour"]), train_scaled_df], how="horizontal")
-            val_scaled_df = pl.concat([val_df.select(["site_id", "observation_hour"]), val_scaled_df], how="horizontal")
-            test_scaled_df = pl.concat([test_df.select(["site_id", "observation_hour"]), test_scaled_df], how="horizontal")
+        train_scaled_df = pl.DataFrame(train_scaled_arr, schema=model_input_cols)
+        val_scaled_df = pl.DataFrame(val_scaled_arr, schema=model_input_cols)
+        test_scaled_df = pl.DataFrame(test_scaled_arr, schema=model_input_cols)
 
-            self.train_X_scaled.append(train_scaled_df)
-            self.val_X_scaled.append(val_scaled_df)
-            self.test_X_scaled.append(test_scaled_df)
+        # Preserve site_id and observation_hour for alignment and downstream processing
+        train_scaled_df = pl.concat([train_df.select(["site_id", "observation_hour"]), train_scaled_df], how="horizontal")
+        val_scaled_df = pl.concat([val_df.select(["site_id", "observation_hour"]), val_scaled_df], how="horizontal")
+        test_scaled_df = pl.concat([test_df.select(["site_id", "observation_hour"]), test_scaled_df], how="horizontal")
 
-            # Scale targets and keep as DataFrames as well
-            train_y = torch.tensor(train_df[target_col].to_numpy(), dtype=torch.float64).reshape(-1, 1)
-            val_y = torch.tensor(val_df[target_col].to_numpy(), dtype=torch.float64).reshape(-1, 1)
-            test_y = torch.tensor(test_df[target_col].to_numpy(), dtype=torch.float64).reshape(-1, 1)
+        self.train_X_scaled = train_scaled_df
+        self.val_X_scaled = val_scaled_df
+        self.test_X_scaled = test_scaled_df 
 
-            target_scaler = TorchStandardScaler()
-            target_scaler.fit(train_y)
-            # keep as 2D arrays when converting back to numpy to avoid zero-dim issues
-            train_y_scaled_t = target_scaler.transform(train_y)
-            val_y_scaled_t = target_scaler.transform(val_y)
-            test_y_scaled_t = target_scaler.transform(test_y)
+        # Scale targets and keep as DataFrames as well
+        train_y = torch.tensor(train_df[target_col].to_numpy(), dtype=torch.float64).reshape(-1, 1)
+        val_y = torch.tensor(val_df[target_col].to_numpy(), dtype=torch.float64).reshape(-1, 1)
+        test_y = torch.tensor(test_df[target_col].to_numpy(), dtype=torch.float64).reshape(-1, 1)
 
-            train_y_arr = train_y_scaled_t.detach().cpu().numpy().reshape(-1, 1)
-            val_y_arr = val_y_scaled_t.detach().cpu().numpy().reshape(-1, 1)
-            test_y_arr = test_y_scaled_t.detach().cpu().numpy().reshape(-1, 1)
+        target_scaler = TorchStandardScaler()
+        target_scaler.fit(train_y)
+        self.target_scaler = target_scaler
 
-            self.train_y_scaled.append(pl.DataFrame(train_y_arr, schema=[target_col]))
-            self.val_y_scaled.append(pl.DataFrame(val_y_arr, schema=[target_col]))
-            self.test_y_scaled.append(pl.DataFrame(test_y_arr, schema=[target_col]))
+        # keep as 2D arrays when converting back to numpy to avoid zero-dim issues
+        train_y_scaled_t = target_scaler.transform(train_y)
+        val_y_scaled_t = target_scaler.transform(val_y)
+        test_y_scaled_t = target_scaler.transform(test_y)
 
-            # store scalers on the instance for downstream use
+        train_y_arr = train_y_scaled_t.detach().cpu().numpy().reshape(-1, 1)
+        val_y_arr = val_y_scaled_t.detach().cpu().numpy().reshape(-1, 1)
+        test_y_arr = test_y_scaled_t.detach().cpu().numpy().reshape(-1, 1)
+
+        self.train_y_scaled = pl.DataFrame(train_y_arr, schema=[self.target_col])
+        self.val_y_scaled = pl.DataFrame(val_y_arr, schema=[self.target_col])
+        self.test_y_scaled = pl.DataFrame(test_y_arr, schema=[self.target_col])
+
+        # store scalers on the instance for downstream use
 
         # store observation times (as ISO strings) aligned with the X arrays
         # do not store test_times per request

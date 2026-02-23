@@ -25,7 +25,7 @@ config = {
     "target": "streamflow_cfs_target_24h",
     "train_split": 0.8,
     "val_split": 0.9,
-    "n_rows": 50000,
+    "sites": ["06923250"],
     "file_path": "flood-dataset-missouri",
     "file_name": "flood_model_missouri",
     "table": "wandb.flood_model_missouri",
@@ -34,7 +34,7 @@ config = {
 
 pcr = processor(config)
 pcr.pull_wandb()
-train_X, val_X, test_X, train_y, val_y, test_y, train_sites, val_sites, test_sites, feature_scaler, target_scaler = pcr.return_outputs()
+train_X, val_X, test_X, train_y, val_y, test_y = pcr.return_outputs()
 
 #example of how to set up your model sasha
 

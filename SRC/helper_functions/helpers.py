@@ -14,24 +14,24 @@ def pull_wandb(
     api = wandb.Api(timeout=60)
     artifact = api.artifact(f"connorjsmith28-rice-university/flood-forecasting/{file_path}:latest")
     artifact_dir = artifact.download()
-    df = pl.read_parquet(
-        f"{artifact_dir}/{file_name}.parquet",
-    )
+    df = pl.read_parquet(f"{artifact_dir}/{file_name}.parquet")
+
     # Filter by site(s)
     if sites is not None:
         df = df.filter(pl.col("site_id").cast(pl.Utf8).is_in(sites))
     elif site is not None:
         df = df.filter(pl.col("site_id").cast(pl.Utf8) == site)
-    # Filter to noon observations
-    df = df.filter(pl.col("observation_hour").dt.hour() == 12)
+    
     # Filter by date range
     if start_date is not None:
-        df = df.filter(pl.col("observation_hour") >= pl.lit(start_date).str.to_datetime())
+        df = df.filter(pl.col("observation_hour") >= pl.lit(start_date).str.strptime(pl.Datetime("us", "UTC"), "%Y-%m-%d"))
     if end_date is not None:
-        df = df.filter(pl.col("observation_hour") <= pl.lit(end_date).str.to_datetime())
-    df = df.sort(["site_id", "observation_hour"])
-    return df
- 
+        df = df.filter(pl.col("observation_hour") <= pl.lit(end_date).str.strptime(pl.Datetime("us", "UTC"), "%Y-%m-%d"))
+    
+    # Filter to noon observations
+    df = df.filter(pl.col("observation_hour").dt.hour() == 12)
+
+    return df.sort(["site_id", "observation_hour"])
 
 def pull_duckdb(
     file_name: str,
