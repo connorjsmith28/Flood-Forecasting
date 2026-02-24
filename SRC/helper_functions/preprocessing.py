@@ -73,7 +73,6 @@ class processor():
     - target: the column to predict
     - train_split: the fraction of the data to use for training
     - val_split: the fraction of the data to use for validation
-    - n_rows: the number of rows to read from the W&B artifact or DuckDB table
     - file_path: the path to the W&B artifact
     - file_name: the name of the W&B artifact
     - table: the name of the DuckDB table
@@ -81,7 +80,7 @@ class processor():
     """
     def __init__(self, config: dict) -> None:
         self.config = config
-        self.df: pl.DataFrame | None = None  # single combined DataFrame
+        self.df: pl.DataFrame | None = None
         self.train_X_scaled: pl.DataFrame | None = None
         self.val_X_scaled: pl.DataFrame | None = None
         self.test_X_scaled: pl.DataFrame | None = None
@@ -92,116 +91,142 @@ class processor():
         self.target_scaler = TorchStandardScaler()
 
     def pull_wandb(self):
-        dfs = []
-        for site in self.config['sites']:
-            dfs.append(pull_wandb(self.config["file_name"], self.config["file_path"], self.config['n_rows'], site))
-        self.df = pl.concat(dfs)
+        self.df = pull_wandb(
+            self.config["file_name"],
+            self.config["file_path"],
+            sites=self.config.get("sites"),
+            start_date=self.config.get("start_date"),
+            end_date=self.config.get("end_date"),
+            frequency=self.config.get("frequency"),
+        )
         self.preprocess()
 
     def pull_duckdb(self):
         self.df = pull_duckdb(
             self.config["table"],
-            sites=self.config["sites"],
+            sites=self.config.get("sites"),
             start_date=self.config.get("start_date"),
             end_date=self.config.get("end_date"),
+            frequency=self.config.get("frequency"),
         )
         self.preprocess()
          
     def preprocess(self):
         """
-        Single-pass pipeline: feature-engineer the combined DataFrame, fit scalers
-        on all sites, split by time, scale, then partition into per-site lists.
-
-        All lag / shift operations use `.over("site_id")` so values never leak
-        across sites.
+        Pipeline: load -> select -> filter -> sort -> add target -> split by time -> scale (TorchStandardScaler).
+        Returns (train_X_scaled, val_X_scaled, test_X_scaled, train_y_scaled, val_y_scaled, test_y_scaled,
+            feature_scaler, target_scaler).
+        X and y are torch.Tensor; sites are numpy (string IDs).
         """
+        # 1. Load (optional config["n_rows"] limits rows read from artifact)
         df = self.df
         self.target_col = self.config["target"]
-
-        # --- 1. Select & sort ------------------------------------------------
+        # 2. Select features and filter
         features = ["site_id", "observation_hour"] + self.config["input_cols"]
-        df = df.select(features).sort(["site_id", "observation_hour"])
+        df = df.select(features)
 
-        # --- 2. Target: streamflow 24 h ahead (within each site) ------------
+        # 3. Sort by site and time (required for LSTM sequences)
+        df = df.sort(["site_id", "observation_hour"])
+
+        shift_amount = 1 if self.config.get("frequency") == "daily" else 24
+
         df = df.with_columns(
             pl.col("streamflow_cfs_mean")
-            .shift(-24)
+            .shift(-shift_amount)
             .over("site_id")
             .alias(self.target_col)
-        )
+)
+        # drop rows where target is null (last 24 rows per site after shift)
         df = df.drop_nulls(subset=[self.target_col])
-        df = df.drop_nulls(subset=["gage_height_ft_mean", "streamflow_cfs_mean"])
 
-        # --- 3. Lag features (within each site – no cross-site leakage) ------
+        # Adds a lag for the last 7 hours of the data
         exprs = []
-        for col in self.config["input_cols"]:
-            if col in ["latitude", "longitude"]:
+        for val in self.config["input_cols"]:
+            if val in ["latitude", "longitude"]:
                 continue
-            for lag in range(1, self.config["lag_window"]):
-                exprs.append(
-                    pl.col(col).shift(lag).over("site_id").alias(f"{col}{lag}")
-                )
-        df = df.with_columns(exprs)
+            for idx in range(1, self.config["lag_window"]):
+                exprs.append(pl.col(val).shift(idx).over("site_id").alias(f"{val}{idx}"))
 
-        # Drop rows where lags are null (first `lag_window - 1` rows per site)
-        lag_cols_all = [f"{col}{lag}" for col in self.config["input_cols"]
-                        if col not in ["latitude", "longitude"]
-                        for lag in range(1, self.config["lag_window"])]
-        df = df.drop_nulls(subset=lag_cols_all)
+        df= df.with_columns(exprs)
 
-        # --- 4. Build column lists -------------------------------------------
         original_cols = [v for v in self.config["input_cols"] if v not in ["latitude", "longitude"]]
         static_cols = [v for v in self.config["input_cols"] if v in ["latitude", "longitude"]]
-        self.model_input_cols = original_cols + static_cols + lag_cols_all
+        lagged_cols = [f"{val}{idx}" for val in self.config["input_cols"] 
+                    if val not in ["latitude", "longitude"] 
+                    for idx in range(1, self.config["lag_window"])]
+        model_input_cols = original_cols + static_cols + lagged_cols
 
-        # --- 5. Fit scalers on ALL data (before splitting) -------------------
-        self.feature_scaler.fit(
-            torch.tensor(df.select(self.model_input_cols).to_numpy(), dtype=torch.float64)
+        df = df.drop_nulls(subset=lagged_cols)
+
+        # 5. Split by time (torch quantiles + masks)
+        train_df, val_df, test_df = train_val_test_split_by_time(
+            df,
+            "observation_hour",
+            self.config["train_split"],
+            self.config["val_split"],
         )
-        self.target_scaler.fit(
-            torch.tensor(df.select(self.target_col).to_numpy(), dtype=torch.float64)
-        )
 
-        # --- 6. Split by time PER SITE, scale, then concatenate ---------------
-        train_parts_x, val_parts_x, test_parts_x = [], [], []
-        train_parts_y, val_parts_y, test_parts_y = [], [], []
+        # 6. Convert to tensors and scale with TorchStandardScaler (keep as tensors)
+        target_col = self.config["target"]
 
-        for site in df["site_id"].unique().sort().to_list():
-            site_df = df.filter(pl.col("site_id") == site)
-            train_df, val_df, test_df = train_val_test_split_by_time(
-                site_df, "observation_hour",
-                self.config["train_split"], self.config["val_split"],
-            )
+        # Convert input columns to torch tensors for scaler fitting
+        train_X = torch.tensor(train_df.select(model_input_cols).to_numpy(), dtype=torch.float64)
+        val_X = torch.tensor(val_df.select(model_input_cols).to_numpy(), dtype=torch.float64)
+        test_X = torch.tensor(test_df.select(model_input_cols).to_numpy(), dtype=torch.float64)
 
-            for split_df, x_parts in [
-                (train_df, train_parts_x),
-                (val_df, val_parts_x),
-                (test_df, test_parts_x),
-            ]:
-                X = torch.tensor(split_df.select(self.model_input_cols).to_numpy(), dtype=torch.float64)
-                X_scaled = self.feature_scaler.transform(X).numpy()
-                scaled_df = pl.DataFrame(X_scaled, schema=self.model_input_cols)
-                scaled_df = pl.concat(
-                    [split_df.select(["site_id", "observation_hour"]), scaled_df],
-                    how="horizontal",
-                )
-                x_parts.append(scaled_df)
+        feature_scaler = TorchStandardScaler()
+        feature_scaler.fit(train_X)
+        self.feature_scaler = feature_scaler
 
-            for split_df, y_parts in [
-                (train_df, train_parts_y),
-                (val_df, val_parts_y),
-                (test_df, test_parts_y),
-            ]:
-                y = torch.tensor(split_df[self.target_col].to_numpy(), dtype=torch.float64).reshape(-1, 1)
-                y_scaled = self.target_scaler.transform(y).detach().cpu().numpy().reshape(-1, 1)
-                y_parts.append(pl.DataFrame(y_scaled, schema=[self.target_col]))
+        train_X_scaled_t = feature_scaler.transform(train_X)
+        val_X_scaled_t = feature_scaler.transform(val_X)
+        test_X_scaled_t = feature_scaler.transform(test_X)
 
-        self.train_X_scaled = pl.concat(train_parts_x)
-        self.val_X_scaled = pl.concat(val_parts_x)
-        self.test_X_scaled = pl.concat(test_parts_x)
-        self.train_y_scaled = pl.concat(train_parts_y)
-        self.val_y_scaled = pl.concat(val_parts_y)
-        self.test_y_scaled = pl.concat(test_parts_y)
+        # Convert scaled tensors back to Polars DataFrames and attach site/time columns
+        train_scaled_arr = train_X_scaled_t.numpy()
+        val_scaled_arr = val_X_scaled_t.numpy()
+        test_scaled_arr = test_X_scaled_t.numpy()
+
+        train_scaled_df = pl.DataFrame(train_scaled_arr, schema=model_input_cols)
+        val_scaled_df = pl.DataFrame(val_scaled_arr, schema=model_input_cols)
+        test_scaled_df = pl.DataFrame(test_scaled_arr, schema=model_input_cols)
+
+        # Preserve site_id and observation_hour for alignment and downstream processing
+        train_scaled_df = pl.concat([train_df.select(["site_id", "observation_hour"]), train_scaled_df], how="horizontal")
+        val_scaled_df = pl.concat([val_df.select(["site_id", "observation_hour"]), val_scaled_df], how="horizontal")
+        test_scaled_df = pl.concat([test_df.select(["site_id", "observation_hour"]), test_scaled_df], how="horizontal")
+
+        self.train_X_scaled = train_scaled_df
+        self.val_X_scaled = val_scaled_df
+        self.test_X_scaled = test_scaled_df 
+
+        # Scale targets and keep as DataFrames as well
+        train_y = torch.tensor(train_df[target_col].to_numpy(), dtype=torch.float64).reshape(-1, 1)
+        val_y = torch.tensor(val_df[target_col].to_numpy(), dtype=torch.float64).reshape(-1, 1)
+        test_y = torch.tensor(test_df[target_col].to_numpy(), dtype=torch.float64).reshape(-1, 1)
+
+        target_scaler = TorchStandardScaler()
+        target_scaler.fit(train_y)
+        self.target_scaler = target_scaler
+
+        # keep as 2D arrays when converting back to numpy to avoid zero-dim issues
+        train_y_scaled_t = target_scaler.transform(train_y)
+        val_y_scaled_t = target_scaler.transform(val_y)
+        test_y_scaled_t = target_scaler.transform(test_y)
+
+        train_y_arr = train_y_scaled_t.detach().cpu().numpy().reshape(-1, 1)
+        val_y_arr = val_y_scaled_t.detach().cpu().numpy().reshape(-1, 1)
+        test_y_arr = test_y_scaled_t.detach().cpu().numpy().reshape(-1, 1)
+
+        self.train_y_scaled = pl.DataFrame(train_y_arr, schema=[self.target_col])
+        self.val_y_scaled = pl.DataFrame(val_y_arr, schema=[self.target_col])
+        self.test_y_scaled = pl.DataFrame(test_y_arr, schema=[self.target_col])
+
+        # store scalers on the instance for downstream use
+
+        # store observation times (as ISO strings) aligned with the X arrays
+        # do not store test_times per request
+    
     def return_outputs(self):
         return (
             self.train_X_scaled,
@@ -213,26 +238,22 @@ class processor():
         )
         
     def save_to_wandb(self, artifact_name, artifact_type, artifact_description, out_dir):
-
         os.makedirs(out_dir, exist_ok=True)
 
-        # Save scaled arrays (tensors -> numpy for .npy)
-        # Save scaled arrays (DataFrames -> numpy for .npy)
-        # X DataFrames include site_id and observation_hour as first two columns
-        np.save(f"{out_dir}/train_X_scaled.npy", self.train_X_scaled.to_numpy())
-        np.save(f"{out_dir}/val_X_scaled.npy", self.val_X_scaled.to_numpy())
-        np.save(f"{out_dir}/test_X_scaled.npy", self.test_X_scaled.to_numpy())
+        # Save X as parquet (preserves site_id string and observation_hour datetime)
+        self.train_X_scaled.write_parquet(f"{out_dir}/train_X_scaled.parquet")
+        self.val_X_scaled.write_parquet(f"{out_dir}/val_X_scaled.parquet")
+        self.test_X_scaled.write_parquet(f"{out_dir}/test_X_scaled.parquet")
+
+        # Save y as npy (purely numeric)
         np.save(f"{out_dir}/train_y_scaled.npy", self.train_y_scaled.to_numpy())
         np.save(f"{out_dir}/val_y_scaled.npy", self.val_y_scaled.to_numpy())
         np.save(f"{out_dir}/test_y_scaled.npy", self.test_y_scaled.to_numpy())
-        # save observation times
-        # do not save train/val/test times per request
 
         joblib.dump(self.feature_scaler, f"{out_dir}/feature_scaler.pkl")
         joblib.dump(self.target_scaler, f"{out_dir}/target_scaler.pkl")
 
         run = wandb.run
-        #sasha please test and modularize code below to helpers
         if run is not None:
             artifact = wandb.Artifact(
                 name=artifact_name,
@@ -243,7 +264,6 @@ class processor():
             run.log_artifact(artifact, aliases=["latest"])
             run.finish()
             print("\nPipeline outputs uploaded to W&B.")
-        #todo write to return output
 
 def safe_drop(df, cols):
     existing = [c for c in cols if c in df.columns]
@@ -275,7 +295,8 @@ def prep_x_for_tf_horiz(df, cols_to_drop=None, timesteps=None):
     """Convert a multi-site Polars DataFrame to a 3D NumPy array for TensorFlow.
 
     Processes each site independently (drops first `timesteps` rows per site),
-    then truncates all sites to the same sample count and vstacks.
+    then truncates all sites to the same sample count and concatenates along
+    the feature axis so each timestep contains features from ALL sites.
 
     Args:
         df: Polars DataFrame with a 'site_id' column and all sites combined.
@@ -283,7 +304,7 @@ def prep_x_for_tf_horiz(df, cols_to_drop=None, timesteps=None):
         timesteps: lag window / number of timesteps for reshaping.
 
     Returns:
-        3D NumPy array of shape (n_sites * min_samples, timesteps, features_per_step).
+        3D NumPy array of shape (min_samples, timesteps, features_per_step * n_sites).
     """
     if cols_to_drop is None:
         cols_to_drop = ['latitude', 'longitude', 'site_id', 'observation_hour']
@@ -295,11 +316,13 @@ def prep_x_for_tf_horiz(df, cols_to_drop=None, timesteps=None):
         blocks.append(_to_3d(site_df, cols_to_drop, timesteps))
 
     min_samples = min(b.shape[0] for b in blocks)
-    return np.vstack([b[:min_samples] for b in blocks])
+    return np.concatenate([b[:min_samples] for b in blocks], axis=2)
 
 
 def prep_y_for_tf_horiz(y_df, site_ids, timesteps=0):
-    """Prepare target array for TensorFlow by splitting per-site, trimming, and vstacking.
+    """Prepare target array for TensorFlow by splitting per-site, trimming, and hstacking.
+
+    Each site becomes one output column so the model predicts all sites simultaneously.
 
     Args:
         y_df: Polars DataFrame with a single target column (rows aligned with X).
@@ -307,7 +330,7 @@ def prep_y_for_tf_horiz(y_df, site_ids, timesteps=0):
         timesteps: number of initial rows to drop per site to match X alignment from prep_x_for_tf.
 
     Returns:
-        2D NumPy array of shape (n_sites * min_samples, 1).
+        2D NumPy array of shape (min_samples, n_sites).
     """
     target_col = y_df.columns[0]
     combined = y_df.with_columns(site_ids.alias("site_id"))
@@ -317,4 +340,4 @@ def prep_y_for_tf_horiz(y_df, site_ids, timesteps=0):
         for s in sites
     ]
     min_len = min(len(p) for p in parts)
-    return np.vstack([p[:min_len] for p in parts])
+    return np.hstack([p[:min_len] for p in parts])
