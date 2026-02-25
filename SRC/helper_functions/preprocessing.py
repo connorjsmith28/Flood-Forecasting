@@ -28,42 +28,77 @@ class TorchStandardScaler:
         return X * self.scale_ + self.mean_
 
 
+
+
 def train_val_test_split_by_time(
     df: pl.DataFrame,
     time_col: str,
     train_frac: float,
     val_frac: float,
+    split_time_days: int | None = None, 
     ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """
-    Split a Polars DataFrame by time using torch quantiles and masks.
-    Returns (train_df, val_df, test_df): first train_frac train, next (val_frac - train_frac) val, rest test.
+    Split a Polars DataFrame by time.
+    If split_time_days is provided, splits into chunks of that many days and
+    takes train_frac of each chunk for train, next (val_frac - train_frac) for val,
+    and the rest for test. Otherwise splits chronologically.
     """
-    timestamps = df[time_col].cast(pl.Int64).to_numpy()
 
-    observation_hour = torch.tensor(
-        timestamps,
-        dtype=torch.float64
-    )
+    if split_time_days is None:
+        timestamps = df[time_col].cast(pl.Int64).to_numpy()
 
-    split_thresholds = torch.quantile(
-        observation_hour,
-        torch.tensor([train_frac, val_frac], dtype=torch.float64),
-    )
-    train_mask = observation_hour < split_thresholds[0]
-    val_mask = (observation_hour >= split_thresholds[0]) & (
-        observation_hour < split_thresholds[1]
-    )
-    test_mask = observation_hour >= split_thresholds[1]
+        observation_hour = torch.tensor(
+            timestamps,
+            dtype=torch.float64
+        )
 
-    train_idx = torch.where(train_mask)[0].numpy()
-    val_idx = torch.where(val_mask)[0].numpy()
-    test_idx = torch.where(test_mask)[0].numpy()
+        split_thresholds = torch.quantile(
+            observation_hour,
+            torch.tensor([train_frac, val_frac], dtype=torch.float64),
+        )
+        train_mask = observation_hour < split_thresholds[0]
+        val_mask = (observation_hour >= split_thresholds[0]) & (
+            observation_hour < split_thresholds[1]
+        )
+        test_mask = observation_hour >= split_thresholds[1]
 
-    train_df = df.filter(pl.int_range(0, df.height).is_in(pl.Series(train_idx)))
-    val_df = df.filter(pl.int_range(0, df.height).is_in(pl.Series(val_idx)))
-    test_df = df.filter(pl.int_range(0, df.height).is_in(pl.Series(test_idx)))
-    
+        train_idx = torch.where(train_mask)[0].numpy()
+        val_idx = torch.where(val_mask)[0].numpy()
+        test_idx = torch.where(test_mask)[0].numpy()
+
+        train_df = df.filter(pl.int_range(0, df.height).is_in(pl.Series(train_idx)))
+        val_df = df.filter(pl.int_range(0, df.height).is_in(pl.Series(val_idx)))
+        test_df = df.filter(pl.int_range(0, df.height).is_in(pl.Series(test_idx)))
+        
+    else:
+        dates = df[time_col].unique().sort()
+        n_dates = len(dates)
+
+        train_dates = []
+        val_dates = []
+        test_dates = []
+
+        # Slide through the dates in chunks of split_time_days
+        for chunk_start in range(0, n_dates, split_time_days):
+            chunk = dates[chunk_start: chunk_start + split_time_days]
+            n_chunk = len(chunk)
+            
+            if n_chunk < 10:
+                continue
+
+            train_end = int(n_chunk * train_frac)
+            val_end = int(n_chunk * val_frac)
+
+            train_dates.extend(chunk[:train_end].to_list())
+            val_dates.extend(chunk[train_end:val_end].to_list())
+            test_dates.extend(chunk[val_end:].to_list())
+
+        train_df = df.filter(pl.col(time_col).is_in(train_dates))
+        val_df = df.filter(pl.col(time_col).is_in(val_dates))
+        test_df = df.filter(pl.col(time_col).is_in(test_dates))
+
     return train_df, val_df, test_df
+
 
 class processor():
     """
@@ -164,6 +199,7 @@ class processor():
             "observation_hour",
             self.config["train_split"],
             self.config["val_split"],
+            split_time_days=self.config.get("split_time_days"),
         )
 
         # 6. Convert to tensors and scale with TorchStandardScaler (keep as tensors)
