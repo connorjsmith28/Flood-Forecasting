@@ -24,10 +24,14 @@ models:
       +materialized: view
       +schema: staging
     marts:
-      +materialized: table
+      +materialized: batched_table
+      +batch_column: site_id
+      +batch_size: 50
       +schema: marts
     final:
-      +materialized: table
+      +materialized: batched_table
+      +batch_column: site_id
+      +batch_size: 25
 
 flags:
   send_anonymous_usage_stats: false

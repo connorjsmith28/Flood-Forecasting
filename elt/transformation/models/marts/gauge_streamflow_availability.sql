@@ -1,3 +1,5 @@
+{{ config(materialized='table') }}
+
 -- This data shows what data is available for the HUC = 10 gauges for each year.
 
 with info as (
