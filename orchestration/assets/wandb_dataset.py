@@ -36,6 +36,14 @@ class WandbDatasetDailyConfig(Config):
     artifact_name: str = "flood-dataset-daily"
 
 
+class WandbDatasetDailySummaryConfig(Config):
+    """Configuration for W&B daily summary dataset upload."""
+
+    full_refresh: bool = False
+    project: str = "flood-forecasting"
+    artifact_name: str = "flood-dataset-daily-summary"
+
+
 def get_schema_fingerprint(
     con: duckdb.DuckDBPyConnection, table_name: str
 ) -> tuple[str, dict]:
@@ -348,5 +356,29 @@ def wandb_dataset_daily(
         time_column="observed_date",
         parquet_filename="flood_model_daily.parquet",
         description="ML-ready flood forecasting dataset (daily resolution)",
+        normalize_tz=False,
+    )
+
+
+@asset(
+    group_name="sync",
+    description="Upload flood_model_daily_summary (daily max from hourly) to W&B",
+    compute_kind="wandb",
+    deps=["dbt_flood_forecasting"],
+)
+def wandb_dataset_daily_summary(
+    context: AssetExecutionContext,
+    config: WandbDatasetDailySummaryConfig,
+) -> MaterializeResult:
+    """Export flood_model_daily_summary table and upload as W&B artifact."""
+    return _sync_table_to_wandb(
+        context=context,
+        project=config.project,
+        artifact_name=config.artifact_name,
+        full_refresh=config.full_refresh,
+        table_name="flood_model_daily_summary",
+        time_column="observed_date",
+        parquet_filename="flood_model_daily_summary.parquet",
+        description="Daily max streamflow and gage height from hourly (IV) sites",
         normalize_tz=False,
     )
