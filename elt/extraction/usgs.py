@@ -33,6 +33,12 @@ _retry = retry(
 )
 
 
+@_retry
+def _what_sites(**kwargs) -> pd.DataFrame:
+    df, _ = nwis.what_sites(**kwargs)
+    return df
+
+
 def get_site_metadata(
     huc_code: str,
     max_sites: int | None = None,
@@ -57,7 +63,7 @@ def get_site_metadata(
         query_params["hasDataTypeCd"] = data_type
 
     # Discover sites in the HUC region
-    df, _ = nwis.what_sites(**query_params)
+    df = _what_sites(**query_params)
     if df is None or df.empty:
         return pd.DataFrame()
 

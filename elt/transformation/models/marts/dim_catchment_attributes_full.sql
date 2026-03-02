@@ -21,6 +21,14 @@ geology as (
     select * from {{ ref('stg_gagesii_geology') }}
 ),
 
+precipitation as (
+    select * from {{ ref('stg_gagesii_climate_ppt_annual') }}
+),
+
+temperature as (
+    select * from {{ ref('stg_gagesii_climate_tmp_annual') }}
+),
+
 hydro as (
     select * from {{ ref('stg_gagesii_hydro') }}
 ),
@@ -131,6 +139,129 @@ select
     g.geology_pct_hunt,
     g.geology_desc_hunt,
 
+    --Climate Annual Precipitation
+    pa.PPT1950_AVG,
+    pa.PPT1951_AVG,
+    pa.PPT1952_AVG,
+    pa.PPT1953_AVG,
+    pa.PPT1954_AVG,
+    pa.PPT1955_AVG,
+    pa.PPT1956_AVG,
+    pa.PPT1957_AVG,
+    pa.PPT1958_AVG,
+    pa.PPT1959_AVG,
+    pa.PPT1960_AVG,
+    pa.PPT1961_AVG,
+    pa.PPT1962_AVG,
+    pa.PPT1963_AVG,
+    pa.PPT1964_AVG,
+    pa.PPT1965_AVG,
+    pa.PPT1966_AVG,
+    pa.PPT1967_AVG,
+    pa.PPT1968_AVG,
+    pa.PPT1969_AVG,
+    pa.PPT1970_AVG,
+    pa.PPT1971_AVG,
+    pa.PPT1972_AVG,
+    pa.PPT1973_AVG,
+    pa.PPT1974_AVG,
+    pa.PPT1975_AVG,
+    pa.PPT1976_AVG,
+    pa.PPT1977_AVG,
+    pa.PPT1978_AVG,
+    pa.PPT1979_AVG,
+    pa.PPT1980_AVG,
+    pa.PPT1981_AVG,
+    pa.PPT1982_AVG,
+    pa.PPT1983_AVG,
+    pa.PPT1984_AVG,
+    pa.PPT1985_AVG,
+    pa.PPT1986_AVG,
+    pa.PPT1987_AVG,
+    pa.PPT1988_AVG,
+    pa.PPT1989_AVG,
+    pa.PPT1990_AVG,
+    pa.PPT1991_AVG,
+    pa.PPT1992_AVG,
+    pa.PPT1993_AVG,
+    pa.PPT1994_AVG,
+    pa.PPT1995_AVG,
+    pa.PPT1996_AVG,
+    pa.PPT1997_AVG,
+    pa.PPT1998_AVG,
+    pa.PPT1999_AVG,
+    pa.PPT2000_AVG,
+    pa.PPT2001_AVG,
+    pa.PPT2002_AVG,
+    pa.PPT2003_AVG,
+    pa.PPT2004_AVG,
+    pa.PPT2005_AVG,
+    pa.PPT2006_AVG,
+    pa.PPT2007_AVG,
+    pa.PPT2008_AVG,
+    pa.PPT2009_AVG,
+
+    --Climate Annual Temperature
+    ta.TMP1950_AVG,
+    ta.TMP1951_AVG,
+    ta.TMP1952_AVG,
+    ta.TMP1953_AVG,
+    ta.TMP1954_AVG,
+    ta.TMP1955_AVG,
+    ta.TMP1956_AVG,
+    ta.TMP1957_AVG,
+    ta.TMP1958_AVG,
+    ta.TMP1959_AVG,
+    ta.TMP1960_AVG,
+    ta.TMP1961_AVG,
+    ta.TMP1962_AVG,
+    ta.TMP1963_AVG,
+    ta.TMP1964_AVG,
+    ta.TMP1965_AVG,
+    ta.TMP1966_AVG,
+    ta.TMP1967_AVG,
+    ta.TMP1968_AVG,
+    ta.TMP1969_AVG,
+    ta.TMP1970_AVG,
+    ta.TMP1971_AVG,
+    ta.TMP1972_AVG,
+    ta.TMP1973_AVG,
+    ta.TMP1974_AVG,
+    ta.TMP1975_AVG,
+    ta.TMP1976_AVG,
+    ta.TMP1977_AVG,
+    ta.TMP1978_AVG,
+    ta.TMP1979_AVG,
+    ta.TMP1980_AVG,
+    ta.TMP1981_AVG,
+    ta.TMP1982_AVG,
+    ta.TMP1983_AVG,
+    ta.TMP1984_AVG,
+    ta.TMP1985_AVG,
+    ta.TMP1986_AVG,
+    ta.TMP1987_AVG,
+    ta.TMP1988_AVG,
+    ta.TMP1989_AVG,
+    ta.TMP1990_AVG,
+    ta.TMP1991_AVG,
+    ta.TMP1992_AVG,
+    ta.TMP1993_AVG,
+    ta.TMP1994_AVG,
+    ta.TMP1995_AVG,
+    ta.TMP1996_AVG,
+    ta.TMP1997_AVG,
+    ta.TMP1998_AVG,
+    ta.TMP1999_AVG,
+    ta.TMP2000_AVG,
+    ta.TMP2001_AVG,
+    ta.TMP2002_AVG,
+    ta.TMP2003_AVG,
+    ta.TMP2004_AVG,
+    ta.TMP2005_AVG,
+    ta.TMP2006_AVG,
+    ta.TMP2007_AVG,
+    ta.TMP2008_AVG,
+    ta.TMP2009_AVG,
 
     -- Climate indices (NLDAS-derived)
     c.p_mean,
@@ -516,7 +647,7 @@ select
     n.phos_app_kg_sqkm,
 
     -- Pesticides Application
-    pa.pestapp_kg_sqkm,
+    psa.pestapp_kg_sqkm,
 
     -- Population and infrastructure attributes
     pi.pden_2000_block,
@@ -593,6 +724,8 @@ left join bas_morph as bm on bc.site_id = bm.site_id
 left join basin as b on bc.site_id = b.site_id
 left join bound_qa as bqa on bc.site_id = bqa.site_id
 left join geology as g on bc.site_id = g.site_id
+left join precipitation as pa on bc.site_id = pa.site_id
+left join temperature as ta on bc.site_id = ta.site_id
 left join hydro as h on bc.site_id = h.site_id
 left join hydromod_dams as hd on bc.site_id = hd.site_id
 left join hydromod_other as ho on bc.site_id = ho.site_id
@@ -604,7 +737,7 @@ left join lc06_mains800 as lm8 on bc.site_id = lm8.site_id
 left join lc06_rip100 as lr1 on bc.site_id = lr1.site_id
 left join lc06_rip800 as lr8 on bc.site_id = lr8.site_id
 left join nutrient_app as n on bc.site_id = n.site_id
-left join pest_app as pa on bc.site_id = pa.site_id
+left join pest_app as psa on bc.site_id = psa.site_id
 left join pop_infrastr as pi on bc.site_id = pi.site_id
 left join prot_areas as par on bc.site_id = par.site_id
 left join regions as r on bc.site_id = r.site_id
