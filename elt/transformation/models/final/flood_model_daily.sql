@@ -34,7 +34,7 @@ select
     attributes.huc_code,
 
     -- Basin characteristics
-    attributes.drainage_area_sq_km,
+    attributes.drain_sqkm,
     attributes.is_reference_hcdn2009,
     attributes.is_reference_hbn36,
 

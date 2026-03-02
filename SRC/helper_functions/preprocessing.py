@@ -12,6 +12,8 @@ class TorchStandardScaler:
     def __init__(self) -> None:
         self.mean_: torch.Tensor | None = None
         self.scale_: torch.Tensor | None = None
+        self.site_mean_: dict | None = None
+        self.site_scale_: dict | None = None
 
     def fit(self, X: torch.Tensor) -> "TorchStandardScaler":
         self.mean_ = X.to(torch.float64).nanmean(dim=0)
@@ -21,49 +23,113 @@ class TorchStandardScaler:
         self.scale_[torch.isnan(self.scale_)] = 1.0
         return self
 
+    def fit_by_site(self, X: torch.Tensor, site_ids: np.ndarray) -> "TorchStandardScaler":
+        """Fit a separate mean and scale for each site."""
+        self.site_mean_ = {}
+        self.site_scale_ = {}
+        for site in np.unique(site_ids):
+            mask = site_ids == site
+            site_X = X[mask].to(torch.float64)
+            mean = site_X.nanmean(dim=0)
+            variance = ((site_X - mean) ** 2).nanmean(dim=0)
+            scale = variance.sqrt()
+            scale[scale == 0] = 1.0
+            scale[torch.isnan(scale)] = 1.0
+            self.site_mean_[site] = mean
+            self.site_scale_[site] = scale
+        return self
+        
     def transform(self, X: torch.Tensor) -> torch.Tensor:
         return (X.to(torch.float64) - self.mean_) / self.scale_
+
+    def transform_by_site(self, X: torch.Tensor, site_ids: np.ndarray) -> torch.Tensor:
+        """Per-site transform — requires fit_by_site() to have been called."""
+        result = X.to(torch.float64).clone()
+        for site in np.unique(site_ids):
+            mask = site_ids == site
+            result[mask] = (X[mask].to(torch.float64) - self.site_mean_[site]) / self.site_scale_[site]
+        return result
 
     def inverse_transform(self, X: torch.Tensor) -> torch.Tensor:
         return X * self.scale_ + self.mean_
 
+    def inverse_transform_by_site(self, X: torch.Tensor, site_ids: np.ndarray) -> torch.Tensor:
+        """Per-site inverse transform."""
+        result = X.to(torch.float64).clone()
+        for site in np.unique(site_ids):
+            mask = site_ids == site
+            result[mask] = X[mask] * self.site_scale_[site] + self.site_mean_[site]
+        return result
 
 def train_val_test_split_by_time(
     df: pl.DataFrame,
     time_col: str,
     train_frac: float,
     val_frac: float,
+    split_time_days: int | None = None, 
     ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """
-    Split a Polars DataFrame by time using torch quantiles and masks.
-    Returns (train_df, val_df, test_df): first train_frac train, next (val_frac - train_frac) val, rest test.
+    Split a Polars DataFrame by time.
+    If split_time_days is provided, splits into chunks of that many days and
+    takes train_frac of each chunk for train, next (val_frac - train_frac) for val,
+    and the rest for test. Otherwise splits chronologically.
     """
-    timestamps = df[time_col].cast(pl.Int64).to_numpy()
 
-    observation_hour = torch.tensor(
-        timestamps,
-        dtype=torch.float64
-    )
+    if split_time_days is None:
+        timestamps = df[time_col].cast(pl.Int64).to_numpy()
 
-    split_thresholds = torch.quantile(
-        observation_hour,
-        torch.tensor([train_frac, val_frac], dtype=torch.float64),
-    )
-    train_mask = observation_hour < split_thresholds[0]
-    val_mask = (observation_hour >= split_thresholds[0]) & (
-        observation_hour < split_thresholds[1]
-    )
-    test_mask = observation_hour >= split_thresholds[1]
+        observation_hour = torch.tensor(
+            timestamps,
+            dtype=torch.float64
+        )
 
-    train_idx = torch.where(train_mask)[0].numpy()
-    val_idx = torch.where(val_mask)[0].numpy()
-    test_idx = torch.where(test_mask)[0].numpy()
+        split_thresholds = torch.quantile(
+            observation_hour,
+            torch.tensor([train_frac, val_frac], dtype=torch.float64),
+        )
+        train_mask = observation_hour < split_thresholds[0]
+        val_mask = (observation_hour >= split_thresholds[0]) & (
+            observation_hour < split_thresholds[1]
+        )
+        test_mask = observation_hour >= split_thresholds[1]
 
-    train_df = df.filter(pl.int_range(0, df.height).is_in(pl.Series(train_idx)))
-    val_df = df.filter(pl.int_range(0, df.height).is_in(pl.Series(val_idx)))
-    test_df = df.filter(pl.int_range(0, df.height).is_in(pl.Series(test_idx)))
-    
+        train_idx = torch.where(train_mask)[0].numpy()
+        val_idx = torch.where(val_mask)[0].numpy()
+        test_idx = torch.where(test_mask)[0].numpy()
+
+        train_df = df.filter(pl.int_range(0, df.height).is_in(pl.Series(train_idx)))
+        val_df = df.filter(pl.int_range(0, df.height).is_in(pl.Series(val_idx)))
+        test_df = df.filter(pl.int_range(0, df.height).is_in(pl.Series(test_idx)))
+        
+    else:
+        dates = df[time_col].unique().sort()
+        n_dates = len(dates)
+
+        train_dates = []
+        val_dates = []
+        test_dates = []
+
+        # Slide through the dates in chunks of split_time_days
+        for chunk_start in range(0, n_dates, split_time_days):
+            chunk = dates[chunk_start: chunk_start + split_time_days]
+            n_chunk = len(chunk)
+            
+            if n_chunk < 10:
+                continue
+
+            train_end = int(n_chunk * train_frac)
+            val_end = int(n_chunk * val_frac)
+
+            train_dates.extend(chunk[:train_end].to_list())
+            val_dates.extend(chunk[train_end:val_end].to_list())
+            test_dates.extend(chunk[val_end:].to_list())
+
+        train_df = df.filter(pl.col(time_col).is_in(train_dates))
+        val_df = df.filter(pl.col(time_col).is_in(val_dates))
+        test_df = df.filter(pl.col(time_col).is_in(test_dates))
+
     return train_df, val_df, test_df
+
 
 class processor():
     """
@@ -87,6 +153,7 @@ class processor():
         self.train_y_scaled: pl.DataFrame | None = None
         self.val_y_scaled: pl.DataFrame | None = None
         self.test_y_scaled: pl.DataFrame | None = None
+        self.test_site_ids: np.ndarray | None = None
         self.feature_scaler = TorchStandardScaler()
         self.target_scaler = TorchStandardScaler()
 
@@ -164,6 +231,7 @@ class processor():
             "observation_hour",
             self.config["train_split"],
             self.config["val_split"],
+            split_time_days=self.config.get("split_time_days"),
         )
 
         # 6. Convert to tensors and scale with TorchStandardScaler (keep as tensors)
@@ -174,13 +242,27 @@ class processor():
         val_X = torch.tensor(val_df.select(model_input_cols).to_numpy(), dtype=torch.float64)
         test_X = torch.tensor(test_df.select(model_input_cols).to_numpy(), dtype=torch.float64)
 
-        feature_scaler = TorchStandardScaler()
-        feature_scaler.fit(train_X)
-        self.feature_scaler = feature_scaler
+        train_site_ids = train_df["site_id"].to_numpy()
+        val_site_ids = val_df["site_id"].to_numpy()
+        test_site_ids = test_df["site_id"].to_numpy()
+        self.test_site_ids = test_site_ids
 
-        train_X_scaled_t = feature_scaler.transform(train_X)
-        val_X_scaled_t = feature_scaler.transform(val_X)
-        test_X_scaled_t = feature_scaler.transform(test_X)
+        use_site_scaling = self.config.get("site_scaling", False)
+
+        feature_scaler = TorchStandardScaler()
+
+        if use_site_scaling:
+            feature_scaler.fit_by_site(train_X, train_site_ids)
+            train_X_scaled_t = feature_scaler.transform_by_site(train_X, train_site_ids)
+            val_X_scaled_t = feature_scaler.transform_by_site(val_X, val_site_ids)
+            test_X_scaled_t = feature_scaler.transform_by_site(test_X, test_site_ids)
+        else:
+            feature_scaler.fit(train_X)
+            train_X_scaled_t = feature_scaler.transform(train_X)
+            val_X_scaled_t = feature_scaler.transform(val_X)
+            test_X_scaled_t = feature_scaler.transform(test_X)
+
+        self.feature_scaler = feature_scaler
 
         # Convert scaled tensors back to Polars DataFrames and attach site/time columns
         train_scaled_arr = train_X_scaled_t.numpy()
@@ -206,14 +288,21 @@ class processor():
         test_y = torch.tensor(test_df[target_col].to_numpy(), dtype=torch.float64).reshape(-1, 1)
 
         target_scaler = TorchStandardScaler()
-        target_scaler.fit(train_y)
+
+        if use_site_scaling:
+            target_scaler.fit_by_site(train_y, train_site_ids)
+            train_y_scaled_t = target_scaler.transform_by_site(train_y, train_site_ids)
+            val_y_scaled_t = target_scaler.transform_by_site(val_y, val_site_ids)
+            test_y_scaled_t = target_scaler.transform_by_site(test_y, test_site_ids)
+        else:
+            target_scaler.fit(train_y)
+            train_y_scaled_t = target_scaler.transform(train_y)
+            val_y_scaled_t = target_scaler.transform(val_y)
+            test_y_scaled_t = target_scaler.transform(test_y)
+
         self.target_scaler = target_scaler
 
         # keep as 2D arrays when converting back to numpy to avoid zero-dim issues
-        train_y_scaled_t = target_scaler.transform(train_y)
-        val_y_scaled_t = target_scaler.transform(val_y)
-        test_y_scaled_t = target_scaler.transform(test_y)
-
         train_y_arr = train_y_scaled_t.detach().cpu().numpy().reshape(-1, 1)
         val_y_arr = val_y_scaled_t.detach().cpu().numpy().reshape(-1, 1)
         test_y_arr = test_y_scaled_t.detach().cpu().numpy().reshape(-1, 1)

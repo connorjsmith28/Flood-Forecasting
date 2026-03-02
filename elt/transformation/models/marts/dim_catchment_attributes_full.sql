@@ -116,6 +116,8 @@ select
     b.fips_site,
     b.countyname_site,
     b.drain_sqkm,
+    b.is_reference_hcdn2009,
+    b.is_reference_hbn36,
 
     -- Basin classification
     bc.agg_ecoregion,
