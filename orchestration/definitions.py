@@ -30,6 +30,7 @@ from orchestration.assets import (
     dbt_flood_forecasting,
     wandb_dataset,
     wandb_dataset_daily,
+    wandb_dataset_daily_summary,
     wandb_raw_tables,
 )
 
@@ -48,6 +49,7 @@ defs = Definitions(
         dbt_flood_forecasting,
         wandb_dataset,
         wandb_dataset_daily,
+        wandb_dataset_daily_summary,
         wandb_raw_tables,
     ],
     jobs=[

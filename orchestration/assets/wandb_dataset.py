@@ -36,6 +36,14 @@ class WandbDatasetDailyConfig(Config):
     artifact_name: str = "flood-dataset-daily"
 
 
+class WandbDatasetDailySummaryConfig(Config):
+    """Configuration for W&B daily summary dataset upload."""
+
+    full_refresh: bool = False
+    project: str = "flood-forecasting"
+    artifact_name: str = "flood-dataset-daily-summary"
+
+
 def get_schema_fingerprint(
     con: duckdb.DuckDBPyConnection, table_name: str
 ) -> tuple[str, dict]:
@@ -131,6 +139,53 @@ def delete_old_versions(
         context.log.warning(f"Could not clean old versions: {e}")
 
 
+def _export_table_to_parquet(
+    con: duckdb.DuckDBPyConnection,
+    table_name: str,
+    parquet_path: Path,
+    normalize_tz: bool = False,
+    time_column: str | None = None,
+) -> None:
+    """Export a DuckDB table directly to parquet without loading into memory."""
+    if normalize_tz and time_column:
+        con.execute(
+            f"""
+            COPY (
+                SELECT * REPLACE (
+                    {time_column} AT TIME ZONE 'UTC' AS {time_column}
+                )
+                FROM main.{table_name}
+            ) TO '{parquet_path}' (FORMAT PARQUET)
+            """
+        )
+    else:
+        con.execute(
+            f"COPY main.{table_name} TO '{parquet_path}' (FORMAT PARQUET)"
+        )
+
+
+def _get_table_stats(
+    con: duckdb.DuckDBPyConnection, table_name: str, time_column: str
+) -> dict:
+    """Get row count, site count, and date range without loading the full table."""
+    stats = con.execute(
+        f"""
+        SELECT
+            count(*) as row_count,
+            count(DISTINCT site_id) as site_count,
+            min({time_column}) as min_date,
+            max({time_column}) as max_date
+        FROM main.{table_name}
+        """
+    ).fetchone()
+    return {
+        "row_count": stats[0],
+        "site_count": stats[1],
+        "min_date": stats[2],
+        "max_date": stats[3],
+    }
+
+
 def _sync_table_to_wandb(
     context: AssetExecutionContext,
     project: str,
@@ -151,22 +206,14 @@ def _sync_table_to_wandb(
     context.log.info(f"Schema fingerprint: {fingerprint}")
     context.log.info(f"Columns: {len(schema_dict)}")
 
-    # Load local data
-    local_df = con.execute(f"SELECT * FROM main.{table_name}").pl()
-    con.close()
-
-    context.log.info(f"Local {table_name}: {len(local_df):,} rows")
-
-    # Normalize timezone if needed (hourly data has timestamptz)
-    if normalize_tz and time_column in local_df.columns:
-        local_df = local_df.with_columns(
-            pl.col(time_column).dt.convert_time_zone("UTC")
-        )
+    stats = _get_table_stats(con, table_name, time_column)
+    context.log.info(f"Local {table_name}: {stats['row_count']:,} rows")
 
     # Check previous fingerprint to detect schema changes
     api = wandb.Api()
     schema_changed = False
     previous_fingerprint = None
+    needs_merge = False
 
     try:
         prev_artifact = api.artifact(f"{project}/{artifact_name}:latest")
@@ -176,20 +223,16 @@ def _sync_table_to_wandb(
             context.log.warning(
                 f"Schema change detected! {previous_fingerprint} -> {fingerprint}"
             )
+        elif not full_refresh:
+            needs_merge = True
     except wandb.errors.CommError:
         context.log.info("No previous artifact found, creating initial version")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmpdir_path = Path(tmpdir)
+        parquet_path = tmpdir_path / parquet_filename
 
-        # Merge with existing data unless full refresh or schema changed
-        if full_refresh:
-            context.log.info("Full refresh requested, using local data only")
-            final_df = local_df
-        elif schema_changed:
-            context.log.info("Schema changed, using local data only (incompatible)")
-            final_df = local_df
-        else:
+        if needs_merge:
             existing_path = download_existing_artifact(
                 api,
                 project,
@@ -197,25 +240,41 @@ def _sync_table_to_wandb(
                 parquet_filename,
                 tmpdir_path / "existing",
             )
-            if existing_path is not None and normalize_tz:
-                # Normalize existing artifact timezone too for consistent merge
-                existing_raw = pl.read_parquet(existing_path)
-                existing_raw = existing_raw.with_columns(
-                    pl.col(time_column).dt.convert_time_zone("UTC")
-                )
-                existing_path.unlink()
-                existing_raw.write_parquet(existing_path)
-            final_df = merge_datasets(local_df, existing_path, time_column, context)
+            if existing_path is not None:
+                context.log.info("Merging with existing artifact (loading into memory)")
+                if normalize_tz:
+                    existing_raw = pl.read_parquet(existing_path)
+                    existing_raw = existing_raw.with_columns(
+                        pl.col(time_column).dt.convert_time_zone("UTC")
+                    )
+                    existing_path.unlink()
+                    existing_raw.write_parquet(existing_path)
 
-        # Get stats from merged data
-        row_count = len(final_df)
-        site_count = final_df["site_id"].n_unique()
-        min_date = final_df[time_column].min()
-        max_date = final_df[time_column].max()
+                local_df = con.execute(f"SELECT * FROM main.{table_name}").pl()
+                if normalize_tz and time_column in local_df.columns:
+                    local_df = local_df.with_columns(
+                        pl.col(time_column).dt.convert_time_zone("UTC")
+                    )
+                final_df = merge_datasets(local_df, existing_path, time_column, context)
+                final_df.write_parquet(parquet_path)
+                del local_df, final_df
+            else:
+                context.log.info("No existing artifact to merge, exporting directly")
+                _export_table_to_parquet(con, table_name, parquet_path, normalize_tz, time_column)
+        else:
+            if full_refresh:
+                context.log.info("Full refresh requested, exporting directly")
+            elif schema_changed:
+                context.log.info("Schema changed, exporting directly (incompatible)")
+            _export_table_to_parquet(con, table_name, parquet_path, normalize_tz, time_column)
 
-        # Export to parquet
-        parquet_path = tmpdir_path / parquet_filename
-        final_df.write_parquet(parquet_path)
+        con.close()
+
+        # Re-read stats from the exported parquet (may differ if merged)
+        row_count = stats["row_count"]
+        site_count = stats["site_count"]
+        min_date = stats["min_date"]
+        max_date = stats["max_date"]
 
         file_size_mb = parquet_path.stat().st_size / (1024 * 1024)
         context.log.info(f"Parquet file size: {file_size_mb:.1f} MB")
@@ -348,5 +407,29 @@ def wandb_dataset_daily(
         time_column="observed_date",
         parquet_filename="flood_model_daily.parquet",
         description="ML-ready flood forecasting dataset (daily resolution)",
+        normalize_tz=False,
+    )
+
+
+@asset(
+    group_name="sync",
+    description="Upload flood_model_daily_summary (daily max from hourly) to W&B",
+    compute_kind="wandb",
+    deps=["dbt_flood_forecasting"],
+)
+def wandb_dataset_daily_summary(
+    context: AssetExecutionContext,
+    config: WandbDatasetDailySummaryConfig,
+) -> MaterializeResult:
+    """Export flood_model_daily_summary table and upload as W&B artifact."""
+    return _sync_table_to_wandb(
+        context=context,
+        project=config.project,
+        artifact_name=config.artifact_name,
+        full_refresh=config.full_refresh,
+        table_name="flood_model_daily_summary",
+        time_column="observed_date",
+        parquet_filename="flood_model_daily_summary.parquet",
+        description="Daily max streamflow and gage height from hourly (IV) sites",
         normalize_tz=False,
     )
