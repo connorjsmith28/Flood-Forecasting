@@ -25,9 +25,9 @@ def pull_wandb(
     
     # Filter by date range
     if start_date is not None:
-        df = df.filter(pl.col("observation_hour") >= pl.lit(start_date).str.strptime(pl.Datetime("us", "UTC"), "%Y-%m-%d"))
+        df = df.filter(pl.col("observation_hour") >= pl.lit(start_date).str.strptime(pl.Datetime("us"), "%Y-%m-%d"))
     if end_date is not None:
-        df = df.filter(pl.col("observation_hour") <= pl.lit(end_date).str.strptime(pl.Datetime("us", "UTC"), "%Y-%m-%d"))
+        df = df.filter(pl.col("observation_hour") <= pl.lit(end_date).str.strptime(pl.Datetime("us"), "%Y-%m-%d"))
     
     # Filter to noon observations if daily frequency
     if frequency == "daily":
