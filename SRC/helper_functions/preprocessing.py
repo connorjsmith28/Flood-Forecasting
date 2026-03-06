@@ -206,20 +206,22 @@ class processor():
         # drop rows where target is null (last 24 rows per site after shift)
         df = df.drop_nulls(subset=[self.target_col])
 
-        # Adds a lag for the last 7 hours of the data
+        # Add lag features for dynamic columns
+        static_col_names = self.config.get("static_cols", ["latitude", "longitude"])
+
         exprs = []
         for val in self.config["input_cols"]:
-            if val in ["latitude", "longitude"]:
+            if val in static_col_names:
                 continue
             for idx in range(1, self.config["lag_window"]):
                 exprs.append(pl.col(val).shift(idx).over("site_id").alias(f"{val}{idx}"))
 
         df= df.with_columns(exprs)
 
-        original_cols = [v for v in self.config["input_cols"] if v not in ["latitude", "longitude"]]
-        static_cols = [v for v in self.config["input_cols"] if v in ["latitude", "longitude"]]
+        original_cols = [v for v in self.config["input_cols"] if v not in static_col_names]
+        static_cols = [v for v in self.config["input_cols"] if v in static_col_names]
         lagged_cols = [f"{val}{idx}" for val in self.config["input_cols"] 
-                    if val not in ["latitude", "longitude"] 
+                    if val not in static_col_names 
                     for idx in range(1, self.config["lag_window"])]
         model_input_cols = original_cols + static_cols + lagged_cols
 
