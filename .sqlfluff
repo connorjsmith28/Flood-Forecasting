@@ -4,8 +4,8 @@ templater = dbt
 exclude_rules = ambiguous.column_count
 
 [sqlfluff:templater:dbt]
-project_dir = elt/transformation
-profiles_dir = elt/transformation
+project_dir = src/elt/transformation
+profiles_dir = src/elt/transformation
 
 [sqlfluff:indentation]
 indent_unit = space

@@ -30,37 +30,37 @@ setup: extract transform
 lint:
     uv run ruff check --fix .
     uv run ruff format .
-    uv run sqlfluff fix elt/transformation/
+    uv run sqlfluff fix src/elt/transformation/
 
 # Launch Dagster UI
 dagster:
     uv run python -c "import threading, webbrowser, time; threading.Timer(3, lambda: webbrowser.open('http://localhost:3000')).start()"
-    uv run dagster dev -m orchestration.definitions
+    uv run dagster dev -m data.dagster.orchestration.definitions
 
 # Launch DuckDB UI (opens in browser, read-only to allow concurrent Dagster runs)
 db:
-    duckdb -readonly -ui flood_forecasting.duckdb
+    duckdb -readonly -ui data/database/database.duckdb
 
 # Launch DuckDB UI with write access (closes lock on exit)
 db-write:
-    duckdb -ui flood_forecasting.duckdb
+    duckdb -ui data/database/database.duckdb
 download-wandb:
-    uv run python elt/weights_biases_integration/download_repository.py
+    uv run python src/elt/weights_biases_integration/download_repository.py
 # Run full extraction job (USGS, NLDAS, GAGES-II)
 extract:
-    uv run dagster job execute -m orchestration.definitions -j extraction_job
+    uv run dagster job execute -m data.dagster.orchestration.definitions -j extraction_job
 
 # Run full extraction job with fresh data (clears HTTP cache first)
 extract-fresh:
     uv run python -c "import shutil; shutil.rmtree('cache', ignore_errors=True)"
-    uv run dagster job execute -m orchestration.definitions -j extraction_job
+    uv run dagster job execute -m data.dagster.orchestration.definitions -j extraction_job
 
 # dbt project paths
-dbt_project := "elt/transformation"
+dbt_project := "src/elt/transformation"
 dbt_args := "--project-dir " + dbt_project + " --profiles-dir " + dbt_project
 
 # DuckDB path (must match orchestration/definitions.py)
-export DUCKDB_PATH := justfile_directory() / "flood_forecasting.duckdb"
+export DUCKDB_PATH := justfile_directory() / "data" / "database" / "database.duckdb"
 
 # Run full transformation (dbt build = run + test)
 transform:
@@ -89,9 +89,9 @@ dbt-docs:
 
 # Run ML experiment (logs to wandb)
 experiment model:
-    uv run python models/{{model}}.py
+    uv run python notebooks/model_training/{{model}}.py
 
 
 # Create and run a wandb sweep
 sweep model count="5":
-    uv run python -c "import subprocess, re, sys; output = subprocess.run(['uv', 'run', 'wandb', 'sweep', 'models/{{model}}.yml', '--project', 'flood-forecasting'], capture_output=True, text=True); print(output.stdout, end=''); print(output.stderr, end='', file=sys.stderr); match = re.search(r'wandb agent ([^\s]+)', output.stdout + output.stderr); sweep_id = match.group(1) if match else None; sys.exit(1) if not sweep_id else subprocess.run(['uv', 'run', 'wandb', 'agent', sweep_id, '--count', '{{count}}'])"
+    uv run python -c "import subprocess, re, sys; output = subprocess.run(['uv', 'run', 'wandb', 'sweep', 'notebooks/model_training/{{model}}.yml', '--project', 'flood-forecasting'], capture_output=True, text=True); print(output.stdout, end=''); print(output.stderr, end='', file=sys.stderr); match = re.search(r'wandb agent ([^\s]+)', output.stdout + output.stderr); sweep_id = match.group(1) if match else None; sys.exit(1) if not sweep_id else subprocess.run(['uv', 'run', 'wandb', 'agent', sweep_id, '--count', '{{count}}'])"

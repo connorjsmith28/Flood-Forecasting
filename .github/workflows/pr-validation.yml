@@ -28,11 +28,11 @@ jobs:
         run: uv sync
 
       - name: Run extraction
-        run: uv run dagster job execute -m orchestration.definitions -j extraction_job --config orchestration/configs/ci_smoke_test.yaml
+        run: uv run dagster job execute -m data.dagster.orchestration.definitions -j extraction_job --config data/dagster/orchestration/configs/ci_smoke_test.yaml
         env:
-          DUCKDB_PATH: ${{ github.workspace }}/flood_forecasting.duckdb
+          DUCKDB_PATH: ${{ github.workspace }}/data/database/database.duckdb
 
       - name: Run transformation
         run: just transform
         env:
-          DUCKDB_PATH: ${{ github.workspace }}/flood_forecasting.duckdb
+          DUCKDB_PATH: ${{ github.workspace }}/data/database/database.duckdb
