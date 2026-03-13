@@ -1,6 +1,7 @@
-# DuckDB database files
+# DuckDB database files (global pattern for stray DBs)
 *.duckdb
 *.duckdb.wal
+!data/database/
 
 # Python
 __pycache__/
@@ -64,10 +65,13 @@ logs/
 Thumbs.db
 
 # Data files (large datasets)
-data/
 *.parquet
 *.csv
 !**/seeds/*.csv
+
+# DuckDB database files (generated, not tracked)
+data/database/*.duckdb
+data/database/*.duckdb.wal
 
 # Preprocessed data files (stored in W&B artifacts, not git)
 *.npy
