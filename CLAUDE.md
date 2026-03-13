@@ -20,25 +20,35 @@ The original CAMELSH dataset paper can be found: https://www.osti.gov/pages/serv
 
 ## Project Structure
 ```
-elt/
-  extraction/           # Python scripts to fetch data from APIs
-    usgs.py             # USGS site discovery, metadata, and streamflow
-    weather.py          # Open-Meteo historical weather
-  transformation/       # dbt project
-    seeds/              # Static attributes (GAGES-II, HydroATLAS, NLDAS)
-    models/staging/     # Clean raw data
-    models/marts/       # Business logic (dim_sites, fct_streamflow_hourly)
-    models/final/       # ML-ready tables (flood_model)
-orchestration/          # Dagster assets and jobs
-  assets/extraction.py  # Extraction assets with incremental loading
-  assets/dbt_assets.py  # dbt integration
-  definitions.py        # Job definitions
-exploratory/            # Notebooks (not yet populated)
-models/                 # ML models (not yet implemented)
+data/
+  database/             # DuckDB database (database.duckdb)
+  duckdb/queries/       # Saved SQL queries
+  dagster/orchestration/ # Dagster assets, jobs, resources, configs
+src/
+  elt/
+    extraction/         # Python scripts to fetch data from APIs
+      usgs.py           # USGS site discovery, metadata, and streamflow
+      nldas3.py         # NLDAS-2 weather forcing
+    transformation/     # dbt project
+      seeds/            # Static attributes (GAGES-II, HydroATLAS, NLDAS)
+      models/staging/   # Clean raw data
+      models/marts/     # Business logic (dim_sites, fct_streamflow_hourly)
+      models/final/     # ML-ready tables (flood_model)
+  utils/                # Helper functions for notebooks/models
+  features/             # Feature engineering
+  models/               # ML model utilities
+notebooks/
+  data_exploration/     # Data analysis notebooks
+  model_training/       # ML models (training scripts + sweep configs)
+models/                 # Standalone ML models
+reports/
+  figures/              # Generated figures
+  results/              # Model results
+brew/                   # macOS dependencies (Brewfile)
 ```
 
 ## Database
-- **DuckDB**: `flood_forecasting.duckdb`
+- **DuckDB**: `data/database/database.duckdb`
 - **Schemas**: `raw` (extracted data), `seeds` (dbt seeds), `staging`, `marts`, `final`
 - **Key tables**:
   - `raw.site_metadata` - Site locations, drainage areas, and data availability flags (`has_iv`, `has_daily`)

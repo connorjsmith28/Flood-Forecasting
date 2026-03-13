@@ -45,7 +45,7 @@ just extract     # ~3-5 min first run
 just transform   # Build dbt models
 ```
 
-This creates `flood_forecasting.duckdb` with streamflow observations joined to weather forcing data.
+This creates `data/database/database.duckdb` with streamflow observations joined to weather forcing data.
 
 ### 3.5 Authenticate with NASA Earthdata (one-time)
 
@@ -90,12 +90,25 @@ Results are logged to the [flood-forecasting](https://wandb.ai) W&B project.
 ## Project Structure
 
 ```
-elt/
-  extraction/           # Python scripts to fetch data from APIs
-  transformation/       # dbt project (staging + marts)
-orchestration/          # Dagster assets and jobs
-models/                 # ML models (training scripts + sweep configs)
-exploratory/            # Notebooks
+data/
+  database/             # DuckDB database
+  duckdb/queries/       # Saved SQL queries
+  dagster/orchestration/ # Dagster assets and jobs
+src/
+  elt/
+    extraction/         # Python scripts to fetch data from APIs
+    transformation/     # dbt project (staging + marts)
+  utils/                # Helper functions for notebooks/models
+  features/             # Feature engineering
+  models/               # ML model utilities
+notebooks/
+  data_exploration/     # Data analysis notebooks
+  model_training/       # ML models (training scripts + sweep configs)
+models/                 # Standalone ML models
+reports/
+  figures/              # Generated figures
+  results/              # Model results
+brew/                   # Brewfile for macOS dependencies
 ```
 
 ## Data Sources
@@ -127,11 +140,11 @@ Seed data comes from the [CAMELS dataset](https://www.osti.gov/pages/servlets/pu
 
 ## Creating New Models
 
-1. Copy `models/test_model.py` and `models/test_model.yml`
+1. Copy `notebooks/model_training/test_model.py` and `notebooks/model_training/test_model.yml`
 2. Update the model architecture and sweep parameters
 3. Run with `just experiment <name>` or `just sweep <name>`
 
-See [models/README.md](models/README.md) for details.
+See [notebooks/model_training/README.md](notebooks/model_training/README.md) for details.
 
 ## Tech Stack
 

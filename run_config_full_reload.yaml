@@ -2,7 +2,7 @@
 # Fetches data from 2007-10-01 (USGS IV availability) to present
 #
 # Run with:
-#   uv run dagster job execute -m orchestration.definitions -j extraction_job -c run_config_full_reload.yaml
+#   uv run dagster job execute -m data.dagster.orchestration.definitions -j extraction_job -c run_config_full_reload.yaml
 
 ops:
   usgs_site_metadata:
