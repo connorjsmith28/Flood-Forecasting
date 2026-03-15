@@ -16,7 +16,7 @@ def main():
     api = wandb.Api()
     artifact_strings = ["flood-forecasting/flood-dataset","flood-forecasting/flood-dataset-missouri","flood-forecasting/flood-dataset-daily"]
     # use the repository root DuckDB file
-    db_path = Path(__file__).resolve().parents[2] / "data" / "database" / "database.duckdb"
+    db_path = Path(__file__).resolve().parents[3] / "data" / "database" / "database.duckdb"
     con = duckdb.connect(str(db_path))
 
     # ensure a dedicated schema for wandb imports

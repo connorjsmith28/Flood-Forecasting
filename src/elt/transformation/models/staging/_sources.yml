@@ -54,6 +54,7 @@ sources:
             description: When the data was extracted
 
       - name: nldas3_forcing
+        identifier: weather_forcing
         description: NLDAS-3 watershed-averaged hourly forcing data (CAMELS-H methodology)
         columns:
           - name: site_id
