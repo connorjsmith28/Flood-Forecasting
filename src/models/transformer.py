@@ -62,7 +62,7 @@ class TransformerModel(BaseModel):
         under_predict_penalty: float = 2.0,
         learning_rate: float = 1e-3,
     ) -> None:
-        super().__init__()
+        super().__init__(under_predict_penalty=under_predict_penalty, learning_rate=learning_rate)
         self.num_blocks = num_blocks
         self.d_model = d_model
         self.num_heads = num_heads
@@ -70,21 +70,7 @@ class TransformerModel(BaseModel):
         self.dense_units = dense_units
         self.dropout_rate = dropout_rate
         self.output_size = output_size
-        self.under_predict_penalty = under_predict_penalty
-        self.learning_rate = learning_rate
 
-    def _loss(self):
-        if self.under_predict_penalty == 1.0:
-            return "mse"
-
-        penalty = self.under_predict_penalty
-
-        def asymmetric_mse(y_true, y_pred):
-            error = y_true - y_pred
-            weight = tf.where(error > 0, penalty, 1.0)
-            return tf.reduce_mean(weight * tf.square(error))
-
-        return asymmetric_mse
 
     def build(self, input_shape: tuple[int, ...] | None = None) -> tf.keras.Model:
         """Build and compile the Transformer model.

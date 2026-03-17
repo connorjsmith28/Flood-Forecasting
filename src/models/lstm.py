@@ -1,28 +1,28 @@
-"""GRU flood forecasting model."""
+"""LSTM flood forecasting model."""
 
 import tensorflow as tf
-from tensorflow.keras.layers import GRU, Dense, Dropout
+from tensorflow.keras.layers import LSTM, Dense, Dropout
 from tensorflow.keras.models import Sequential
 
 from src.models.base import BaseModel
 
 
-class GRUModel(BaseModel):
-    """Two-layer GRU with optional asymmetric MSE loss.
+class LSTMModel(BaseModel):
+    """Two-layer LSTM with optional asymmetric MSE loss.
 
     Args:
-        gru_units: Tuple of units for the two GRU layers.
+        lstm_units: Tuple of units for the two LSTM layers.
         dense_units: Units in the hidden Dense layer before the output.
-        dropout_rate: Dropout fraction after each GRU layer.
+        dropout_rate: Dropout fraction after each LSTM layer.
         output_size: Number of output neurons (1 for single-site prediction).
         under_predict_penalty: When > 1, under-predictions are penalised
-            more heavily (asymmetric MSE).  Set to 1.0 for standard MSE.
+            more heavily (asymmetric MSE). Set to 1.0 for standard MSE.
         learning_rate: Adam learning rate.
     """
 
     def __init__(
         self,
-        gru_units: tuple[int, int] = (32, 16),
+        lstm_units: tuple[int, int] = (32, 16),
         dense_units: int = 64,
         dropout_rate: float = 0.3,
         output_size: int = 1,
@@ -30,14 +30,13 @@ class GRUModel(BaseModel):
         learning_rate: float = 1e-3,
     ) -> None:
         super().__init__(under_predict_penalty=under_predict_penalty, learning_rate=learning_rate)
-        self.gru_units = gru_units
+        self.lstm_units = lstm_units
         self.dense_units = dense_units
         self.dropout_rate = dropout_rate
         self.output_size = output_size
 
-
     def build(self, input_shape: tuple[int, ...] | None = None) -> tf.keras.Model:
-        """Build and compile the GRU model.
+        """Build and compile the LSTM model.
 
         Args:
             input_shape: Optional ``(window_size, n_features)`` tuple.
@@ -46,13 +45,13 @@ class GRUModel(BaseModel):
         layers = []
 
         if input_shape is not None:
-            layers.append(GRU(self.gru_units[0], return_sequences=True, input_shape=input_shape))
+            layers.append(LSTM(self.lstm_units[0], return_sequences=True, input_shape=input_shape))
         else:
-            layers.append(GRU(self.gru_units[0], return_sequences=True))
+            layers.append(LSTM(self.lstm_units[0], return_sequences=True))
 
         layers += [
             Dropout(self.dropout_rate),
-            GRU(self.gru_units[1], return_sequences=False),
+            LSTM(self.lstm_units[1], return_sequences=False),
             Dropout(self.dropout_rate),
             Dense(self.dense_units),
             Dense(self.output_size),
