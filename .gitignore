@@ -68,6 +68,7 @@ Thumbs.db
 *.parquet
 *.csv
 !**/seeds/*.csv
+!data/gage_connections.csv
 
 # DuckDB database files (generated, not tracked)
 data/database/*.duckdb
