@@ -2,6 +2,7 @@ import wandb
 import polars as pl
 from pathlib import Path
 import duckdb
+import numpy as np
 
 def pull_wandb(
     file_name: str,
@@ -95,3 +96,46 @@ def pull_duckdb(
         con.close()
 
     return df
+
+def create_sequences(
+    X: pl.DataFrame,
+    y: pl.DataFrame,
+    window_size: int,
+) -> tuple[np.ndarray, np.ndarray]:
+
+    """Create sliding window sequences per site for sequence models (LSTM, GRU, Transformer, etc.).
+
+    For each site, slides a window of `window_size` timesteps across the data.
+    Each sequence uses `window_size` timesteps of features to predict the target
+    at the final timestep of the window.
+
+    Args:
+        X: Polars DataFrame with a 'site_id' column and feature columns.
+        y: Polars DataFrame with a single target column, row-aligned with X.
+        window_size: Number of timesteps per sequence (e.g. 24 for 24-hour lookback).
+
+    Returns:
+        X_seq: np.ndarray of shape (num_sequences, window_size, num_features)
+        y_seq: np.ndarray of shape (num_sequences,)
+
+    Notes:
+        - Sites with fewer rows than `window_size` are skipped entirely.
+        - Sequences do not cross site boundaries.
+        - Compatible with PyTorch (LSTM, GRU) and TensorFlow/Keras 3D input.
+    """
+    target_col = y.columns[0]
+    combined = X.with_columns(y[target_col])
+    feature_cols = [c for c in X.columns if c not in ("site_id", "observation_hour")]
+
+    X_sequences, y_sequences = [], []
+    for site in combined["site_id"].unique().sort().to_list():
+        site_df = combined.filter(pl.col("site_id") == site)
+        site_X = site_df.select(feature_cols).to_numpy()
+        site_y = site_df[target_col].to_numpy()
+        if len(site_X) < window_size:
+            continue
+        for i in range(len(site_X) - window_size):
+            X_sequences.append(site_X[i : i + window_size])
+            y_sequences.append(site_y[i + window_size - 1])
+
+    return np.array(X_sequences), np.array(y_sequences)
