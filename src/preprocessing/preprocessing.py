@@ -238,6 +238,8 @@ class processor():
         # 1. Load (optional config["n_rows"] limits rows read from artifact)
         df = self.df
         self.target_col = self.config["target"]
+        print(f"Starting preprocessing: {df.shape[0]:,} rows, {df.shape[1]} columns")
+        
         # 2. Select features and filter
         features = ["site_id", "observation_hour"] + self.config["input_cols"]
         df = df.select(features)
@@ -252,7 +254,7 @@ class processor():
             .shift(-shift_amount)
             .over("site_id")
             .alias(self.target_col)
-)
+        )
         # drop rows where target is null (last 24 rows per site after shift)
         df = df.drop_nulls(subset=[self.target_col])
 
@@ -276,8 +278,11 @@ class processor():
         model_input_cols = original_cols + static_cols + lagged_cols
 
         df = df.drop_nulls(subset=lagged_cols)
+        df = df.drop_nulls()
+        print(f"After lag null removal: {df.shape[0]:,} rows, {len(model_input_cols)} features")
 
         # 5. Split by time (torch quantiles + masks)
+        print("Splitting by time...")
         train_df, val_df, test_df = train_val_test_split_by_time(
             df,
             "observation_hour",
@@ -285,7 +290,9 @@ class processor():
             self.config["val_split"],
             split_time_days=self.config.get("split_time_days"),
         )
+        print(f"Train: {train_df.shape[0]:,} | Val: {val_df.shape[0]:,} | Test: {test_df.shape[0]:,}")
 
+        print("Scaling features and targets...")
         # 6. Convert to tensors and scale with TorchStandardScaler (keep as tensors)
         target_col = self.config["target"]
 
@@ -362,7 +369,7 @@ class processor():
         self.train_y_scaled = pl.DataFrame(train_y_arr, schema=[self.target_col])
         self.val_y_scaled = pl.DataFrame(val_y_arr, schema=[self.target_col])
         self.test_y_scaled = pl.DataFrame(test_y_arr, schema=[self.target_col])
-
+        print("Scaling complete.")
         # store scalers on the instance for downstream use
 
         # store observation times (as ISO strings) aligned with the X arrays

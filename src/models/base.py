@@ -15,10 +15,22 @@ class BaseModel(ABC):
     and (optionally) logs the artifact to W&B.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, under_predict_penalty: float = 2.0, learning_rate: float = 1e-3) -> None:
         self.model: tf.keras.Model | None = None
         self.history: dict | None = None
         self.dict_quantiles: dict | None = None
+        self.under_predict_penalty = under_predict_penalty
+        self.learning_rate = learning_rate
+
+    def _loss(self):
+        if self.under_predict_penalty == 1.0:
+            return "mse"
+        penalty = self.under_predict_penalty
+        def asymmetric_mse(y_true, y_pred):
+            error = y_true - y_pred
+            weight = tf.where(error > 0, penalty, 1.0)
+            return tf.reduce_mean(weight * tf.square(error))
+        return asymmetric_mse
 
     @abstractmethod
     def build(self, input_shape: tuple[int, ...]) -> tf.keras.Model:
@@ -28,8 +40,14 @@ class BaseModel(ABC):
         """Train the model, delegating to the underlying Keras model."""
         if self.model is None:
             raise RuntimeError("Call build() before fit()")
+        if isinstance(train_ds, tuple):
+            X_train, y_train = train_ds
+        else:
+            X_train, y_train = train_ds, None
+
         result = self.model.fit(
-            train_ds,
+            X_train,
+            y_train,
             epochs=epochs,
             validation_data=val_ds,
             callbacks=callbacks,
@@ -54,6 +72,46 @@ class BaseModel(ABC):
         prediction = self.predict(X, **kwargs)
         threshold = self.dict_quantiles[site]
         return (prediction >= threshold).astype(np.int32)
+
+    def evaluate(
+        self,
+        X_test: np.ndarray,
+        y_test: np.ndarray,
+        site_ids: np.ndarray,
+        target_scaler,
+    ) -> None:
+        """Print a per-site table of actual mean, predicted mean, and MAE in original CFS scale.
+
+        Args:
+            X_test:        3D array of shape (num_sequences, window_size, num_features).
+            y_test:        1D array of shape (num_sequences,) in scaled units.
+            site_ids:      1D array of site ID strings aligned with X_test/y_test sequences.
+            target_scaler: Fitted TorchStandardScaler used to inverse transform predictions.
+        """
+        import torch
+
+        preds_scaled = self.predict(X_test).flatten()
+        
+        # Inverse transform both predictions and actuals back to CFS
+        preds_cfs = target_scaler.inverse_transform(
+            torch.tensor(preds_scaled).reshape(-1, 1)
+        ).numpy().flatten()
+        
+        actuals_cfs = target_scaler.inverse_transform(
+            torch.tensor(y_test).reshape(-1, 1)
+        ).numpy().flatten()
+
+        for site in np.unique(site_ids):
+            mask = site_ids == site
+            site_preds = preds_cfs[mask]
+            site_actuals = actuals_cfs[mask]
+            mae = np.mean(np.abs(site_actuals - site_preds))
+
+            print(f"Site {site}:")
+            print(f"  {'Split':<10} {'Actual Mean':>15} {'Predicted Mean':>15} {'MAE':>12}")
+            print(f"  {'-'*54}")
+            print(f"  {'Test':<10} {np.mean(site_actuals):>12.1f} CFS {np.mean(site_preds):>12.1f} CFS {mae:>8.1f} CFS")
+            print()
 
     def plot_training_history(self):
         """Plot training/validation loss and MAE curves."""
@@ -91,9 +149,60 @@ class BaseModel(ABC):
 
         plt.tight_layout()
         plt.show()
+
+    def plot_results(
+        self,
+        X_test: np.ndarray,
+        y_test: np.ndarray,
+        target_scaler,
+        n_samples: int = 500,
+        site_id: str | None = None,
+    ) -> None:
+        """Plot predicted vs actual streamflow in original CFS scale.
+
+        Args:
+            X_test:        3D array of shape (num_sequences, window_size, num_features).
+            y_test:        1D array of shape (num_sequences,) in scaled units.
+            target_scaler: Fitted TorchStandardScaler to inverse transform back to CFS.
+            n_samples:     Number of timesteps to plot. Default 500.
+            site_id:       Optional site ID string for the plot title.
+        """
+        import torch
+        import matplotlib.pyplot as plt
+
+        preds_scaled = self.predict(X_test).flatten()
+
+        preds_cfs = target_scaler.inverse_transform(
+            torch.tensor(preds_scaled).reshape(-1, 1)
+        ).numpy().flatten()
+
+        actuals_cfs = target_scaler.inverse_transform(
+            torch.tensor(y_test).reshape(-1, 1)
+        ).numpy().flatten()
+
+        # Slice to n_samples
+        preds_cfs = preds_cfs[:n_samples]
+        actuals_cfs = actuals_cfs[:n_samples]
+
+        title = f"Predictions vs Actual (first {n_samples} samples)"
+        if site_id is not None:
+            title = f"Site {site_id} — " + title
+
+        plt.figure(figsize=(14, 5))
+        plt.plot(actuals_cfs, label="Actual", color="steelblue")
+        plt.plot(preds_cfs, label="Predicted", color="orange")
+        plt.xlabel("Time step")
+        plt.ylabel("Streamflow (CFS)")
+        plt.title(title)
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
     def summary(self):
         if self.model is not None:
             self.model.summary()
+
     def save_model(self, path: str | Path, name: str = "model") -> Path:
         """Save the trained Keras model to disk.
 

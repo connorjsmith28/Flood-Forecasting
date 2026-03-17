@@ -101,7 +101,7 @@ def create_sequences(
     X: pl.DataFrame,
     y: pl.DataFrame,
     window_size: int,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 
     """Create sliding window sequences per site for sequence models (LSTM, GRU, Transformer, etc.).
 
@@ -127,7 +127,7 @@ def create_sequences(
     combined = X.with_columns(y[target_col])
     feature_cols = [c for c in X.columns if c not in ("site_id", "observation_hour")]
 
-    X_sequences, y_sequences = [], []
+    X_sequences, y_sequences, site_id_sequences = [], [], []  # added site_id_sequences
     for site in combined["site_id"].unique().sort().to_list():
         site_df = combined.filter(pl.col("site_id") == site)
         site_X = site_df.select(feature_cols).to_numpy()
@@ -137,5 +137,6 @@ def create_sequences(
         for i in range(len(site_X) - window_size):
             X_sequences.append(site_X[i : i + window_size])
             y_sequences.append(site_y[i + window_size - 1])
+            site_id_sequences.append(site)  # added
 
-    return np.array(X_sequences), np.array(y_sequences)
+    return np.array(X_sequences), np.array(y_sequences), np.array(site_id_sequences)
