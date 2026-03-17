@@ -1,0 +1,30 @@
+program: notebooks/model_training/gnn.py
+method: bayes
+metric:
+  name: best_val_loss
+  goal: minimize
+parameters:
+  window_size:
+    values: [48, 72, 96]
+  gcn_hidden:
+    values: [16, 32, 64]
+  gru_hidden:
+    values: [32, 64, 128]
+  n_gcn_layers:
+    values: [1, 2, 3]
+  dropout:
+    distribution: uniform
+    min: 0.1
+    max: 0.5
+  k_neighbors:
+    values: [2, 3, 5]
+  lr:
+    distribution: log_uniform_values
+    min: 1e-4
+    max: 1e-2
+  batch_size:
+    values: [16, 32, 64]
+  patience:
+    value: 8
+  under_predict_penalty:
+    values: [1.0, 1.5, 2.0, 3.0]
