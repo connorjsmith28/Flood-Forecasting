@@ -1,7 +1,6 @@
 # DuckDB database files (global pattern for stray DBs)
 *.duckdb
 *.duckdb.wal
-!data/database/
 
 # Python
 __pycache__/
