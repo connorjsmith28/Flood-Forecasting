@@ -89,9 +89,9 @@ dbt-docs:
 
 # Run ML experiment (logs to wandb)
 experiment model:
-    uv run python notebooks/model_training/{{model}}.py
+    uv run python notebooks/model_training/{{model}}/{{model}}.py
 
 
 # Create and run a wandb sweep
 sweep model count="5":
-    uv run python -c "import subprocess, re, sys; output = subprocess.run(['uv', 'run', 'wandb', 'sweep', 'notebooks/model_training/{{model}}.yml', '--project', 'flood-forecasting'], capture_output=True, text=True); print(output.stdout, end=''); print(output.stderr, end='', file=sys.stderr); match = re.search(r'wandb agent ([^\s]+)', output.stdout + output.stderr); sweep_id = match.group(1) if match else None; sys.exit(1) if not sweep_id else subprocess.run(['uv', 'run', 'wandb', 'agent', sweep_id, '--count', '{{count}}'])"
+    uv run python -c "import subprocess, re, sys; output = subprocess.run(['uv', 'run', 'wandb', 'sweep', 'notebooks/model_training/{{model}}/{{model}}.yml', '--project', 'flood-forecasting'], capture_output=True, text=True); print(output.stdout, end=''); print(output.stderr, end='', file=sys.stderr); match = re.search(r'wandb agent ([^\s]+)', output.stdout + output.stderr); sweep_id = match.group(1) if match else None; sys.exit(1) if not sweep_id else subprocess.run(['uv', 'run', 'wandb', 'agent', sweep_id, '--count', '{{count}}'])"
