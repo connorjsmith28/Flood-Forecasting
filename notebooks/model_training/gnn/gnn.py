@@ -13,11 +13,17 @@ import torch
 import torch.nn as nn
 import numpy as np
 import polars as pl
-from sklearn.neighbors import NearestNeighbors
 from torch_geometric.nn import GCNConv
 
 import wandb
 from src.preprocessing.preprocessing import processor
+from src.models.graph_utils import (
+    align_sites_by_date,
+    asymmetric_mse,
+    build_knn_edges,
+    build_stacked,
+    GraphWindowDataset,
+)
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -95,34 +101,6 @@ train_X, val_X, test_X, train_y, val_y, test_y = pcr.return_outputs()
 # Uses union alignment: each site is padded with NaN for timestamps it lacks.
 # build_graph_sequences already drops windows containing any NaN.
 
-def align_sites_by_date(
-    X: pl.DataFrame, y: pl.DataFrame
-) -> tuple[pl.DataFrame, pl.DataFrame]:
-    target_col = y.columns[0]
-    combined = X.with_columns(y[target_col])
-    sites = sorted(combined["site_id"].unique().to_list())
-    all_dates = combined["observation_hour"].unique().sort()
-    n_dates = len(all_dates)
-    fill_cols = [c for c in combined.columns if c not in ("site_id", "observation_hour")]
-    print(f"  {n_dates} total timestamps across {len(sites)} sites (union, forward-filled)")
-
-    padded_parts = []
-    for site in sites:
-        spine = pl.DataFrame({
-            "site_id": pl.Series([site] * n_dates),
-            "observation_hour": all_dates,
-        })
-        site_data = combined.filter(pl.col("site_id") == site)
-        aligned = spine.join(site_data, on=["site_id", "observation_hour"], how="left")
-        # Fill gaps within the site's time series; backward_fill covers any leading NaN.
-        aligned = aligned.with_columns([
-            pl.col(c).forward_fill().backward_fill() for c in fill_cols
-        ])
-        padded_parts.append(aligned)
-
-    result = pl.concat(padded_parts).sort(["observation_hour", "site_id"])
-    return result.drop(target_col), result.select(target_col)
-
 
 print("Aligning train...")
 train_X, train_y = align_sites_by_date(train_X, train_y)
@@ -155,25 +133,6 @@ coords = site_meta.select(["latitude", "longitude"]).to_numpy()
 print(f"Nodes: {num_nodes}")
 
 
-def build_knn_edges(coords: np.ndarray, k: int) -> torch.Tensor:
-    """Connect each node to its k nearest geographic neighbors (undirected)."""
-    nbrs = NearestNeighbors(n_neighbors=k + 1, metric="haversine").fit(
-        np.deg2rad(coords)
-    )
-    _, indices = nbrs.kneighbors(np.deg2rad(coords))
-
-    src, dst = [], []
-    for i, neighbors in enumerate(indices):
-        for j in neighbors[1:]:
-            src.append(i)
-            dst.append(j)
-            src.append(j)
-            dst.append(i)
-
-    edge_index = torch.tensor([src, dst], dtype=torch.long)
-    edge_index = torch.unique(edge_index, dim=1)
-    return edge_index
-
 
 edge_index = build_knn_edges(coords, k=cfg.k_neighbors)
 print(f"Edges: {edge_index.shape[1]} (undirected, k={cfg.k_neighbors})")
@@ -182,58 +141,6 @@ print(f"Edges: {edge_index.shape[1]} (undirected, k={cfg.k_neighbors})")
 # Materialising all windows at once (~8 GB for train) causes OOM.
 # Instead, keep compact [num_nodes, T, features] stacked tensors and slice
 # windows lazily in a Dataset.__getitem__.
-
-def build_stacked(
-    X: pl.DataFrame,
-    y: pl.DataFrame,
-    site_to_idx: dict,
-    drop_cols: list[str] | None = None,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Stack per-site data → [num_nodes, T, features] and [num_nodes, T]."""
-    if drop_cols is None:
-        drop_cols = ["site_id", "observation_hour"]
-    target_col = y.columns[0]
-    sites_ordered = sorted(site_to_idx, key=site_to_idx.get)
-
-    combined = X.with_columns(y[target_col])
-    X_list, y_list = [], []
-    for site in sites_ordered:
-        site_df = combined.filter(pl.col("site_id") == site).sort("observation_hour")
-        X_list.append(torch.tensor(
-            site_df.drop(drop_cols + [target_col]).to_numpy(), dtype=torch.float32
-        ))
-        y_list.append(torch.tensor(
-            site_df[target_col].to_numpy(), dtype=torch.float32
-        ))
-
-    return torch.stack(X_list, dim=0), torch.stack(y_list, dim=0)
-
-
-class GraphWindowDataset(torch.utils.data.Dataset):
-    """Lazy sliding-window dataset over [num_nodes, T, features] tensors."""
-
-    def __init__(self, X_stacked: torch.Tensor, y_stacked: torch.Tensor, window_size: int, stride: int = 1):
-        # Compute valid window start indices without allocating all windows.
-        valid_t = ~X_stacked.isnan().any(dim=(0, 2))   # [T]
-        valid_y = ~y_stacked.isnan().any(dim=0)         # [T]
-        window_valid = valid_t.float().unfold(0, window_size, 1).bool().all(dim=1)[:-1]
-        target_valid = valid_y[window_size:]
-        keep = window_valid & target_valid
-
-        self.valid_indices = torch.where(keep)[0][::stride]
-        self.X_stacked = X_stacked   # [nodes, T, features]
-        self.y_stacked = y_stacked   # [nodes, T]
-        self.window_size = window_size
-        print(f"  Dropped {(~keep).sum().item()} NaN windows, kept {keep.sum().item()} (stride={stride} → {len(self.valid_indices)} used)")
-
-    def __len__(self) -> int:
-        return len(self.valid_indices)
-
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
-        t = self.valid_indices[idx].item()
-        x = self.X_stacked[:, t : t + self.window_size, :].permute(1, 0, 2)  # [window, nodes, feat]
-        y = self.y_stacked[:, t + self.window_size]                            # [nodes]
-        return x, y
 
 
 WINDOW_SIZE = cfg.window_size
@@ -332,12 +239,6 @@ wandb.log({"total_params": total_params})
 
 # ── Training ─────────────────────────────────────────────────────────────────
 
-def asymmetric_mse(y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
-    error = y_true - y_pred
-    weight = torch.where(error > 0, cfg.under_predict_penalty, 1.0)
-    return (weight * error ** 2).mean()
-
-
 optimizer = torch.optim.Adam(model.parameters(), lr=cfg.lr)
 edge_index_dev = edge_index.to(DEVICE)
 
@@ -359,7 +260,7 @@ for epoch in range(cfg.epochs):
         xb, yb = xb.to(DEVICE), yb.to(DEVICE)
         optimizer.zero_grad()
         pred = model(xb, edge_index_dev)
-        loss = asymmetric_mse(pred, yb)
+        loss = asymmetric_mse(pred, yb, cfg.under_predict_penalty)
         loss.backward()
         optimizer.step()
         epoch_loss += loss.item() * len(xb)
@@ -387,7 +288,7 @@ for epoch in range(cfg.epochs):
     with torch.no_grad():
         for xb, yb in val_loader:
             xb, yb = xb.to(DEVICE), yb.to(DEVICE)
-            val_loss_sum += asymmetric_mse(model(xb, edge_index_dev), yb).item() * len(xb)
+            val_loss_sum += asymmetric_mse(model(xb, edge_index_dev), yb, cfg.under_predict_penalty).item() * len(xb)
             n_val += len(xb)
     val_loss = val_loss_sum / n_val
 
