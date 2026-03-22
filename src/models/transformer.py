@@ -28,6 +28,11 @@ class TransformerBlock(tf.keras.layers.Layer):
         self.dropout1 = Dropout(dropout)
         self.dropout2 = Dropout(dropout)
 
+
+    def build(self, input_shape):
+        # Let Keras handle sublayer building
+        super().build(input_shape)
+
     def call(self, x, training=False):
         attn_out = self.attn(x, x)
         x = self.norm1(x + self.dropout1(attn_out, training=training))
