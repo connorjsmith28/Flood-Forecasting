@@ -5,7 +5,7 @@ from pathlib import Path
 import pickle
 import numpy as np
 import tensorflow as tf
-
+import torch
 
 class BaseModel(ABC):
     """Abstract base for all flood forecasting models.
@@ -204,15 +204,51 @@ class BaseModel(ABC):
             self.model.summary()
 
     def save_model(self, path: str | Path, name: str = "model") -> Path:
-        """Save the trained Keras model to disk.
+        """Save the trained model to disk.
 
-        Creates the directory if it doesn't exist and saves in the native
-        Keras format (`.keras`).  Returns the path to the saved file.
+        Automatically detects Keras vs PyTorch and saves in the appropriate
+        native format (.keras or .pt).
+        Returns the path to the saved file.
         """
         if self.model is None:
             raise RuntimeError("No model to save — call build() and fit() first")
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
-        model_path = path / f"{name}.keras"
-        self.model.save(model_path)
-        return model_path
+
+        if isinstance(self.model, tf.keras.Model):
+            out_path = path / f"{name}.keras"
+            self.model.save(out_path)
+
+        elif isinstance(self.model, torch.nn.Module):
+            out_path = path / f"{name}.pt"
+            torch.save(self.model, out_path)
+
+        else:
+            raise TypeError(f"Unsupported model type: {type(self.model)}")
+
+        return out_path
+
+    @classmethod
+    def load_model(cls, path: str | Path) -> "BaseModel":
+        """Reconstruct a model instance from a saved file.
+        
+        Usage:
+            model = LSTMModel.load_model("models/lstm.keras")
+            model.predict(X_test)
+        """
+        path = Path(path)
+        if not path.exists():
+            raise FileNotFoundError(f"No file found at {path}")
+
+        instance = cls.__new__(cls)  
+        BaseModel.__init__(instance) 
+
+        suffix = path.suffix
+        if suffix == ".keras":
+            instance.model = tf.keras.models.load_model(path)
+        elif suffix == ".pt":
+            instance.model = torch.load(path, weights_only=True)
+        else:
+            raise ValueError(f"Unrecognized file extension: {suffix}")
+
+        return instance
