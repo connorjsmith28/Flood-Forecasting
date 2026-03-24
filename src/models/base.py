@@ -101,6 +101,10 @@ class BaseModel(ABC):
             torch.tensor(y_test).reshape(-1, 1)
         ).numpy().flatten()
 
+        overall_loss = self.model.evaluate(X_test, y_test, verbose=0)
+        loss_name = self.model.loss if isinstance(self.model.loss, str) else "loss"
+        print(f"Overall test {loss_name}: {overall_loss[0]:.4f}  |  MAE (scaled): {overall_loss[1]:.4f}\n")
+        
         for site in np.unique(site_ids):
             mask = site_ids == site
             site_preds = preds_cfs[mask]
