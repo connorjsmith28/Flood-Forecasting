@@ -151,3 +151,8 @@ seeds:
     config:
       column_types:
         STAID: varchar
+
+  - name: lp3_results
+    config:
+      column_types:
+        site_id: varchar
