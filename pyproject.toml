@@ -39,6 +39,7 @@ dependencies = [
     "exactextract>=0.2.0",
     "earthaccess>=0.16.0",
     "tensorflow>=2.14.0",
+    "shap>=0.51.0",
 ]
 
 [project.optional-dependencies]

@@ -6,6 +6,12 @@ import pickle
 import numpy as np
 import tensorflow as tf
 import torch
+import shap
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
+
 
 class BaseModel(ABC):
     """Abstract base for all flood forecasting models.
@@ -121,9 +127,6 @@ class BaseModel(ABC):
         """Plot training/validation loss and MAE curves."""
         if self.history is None:
             raise RuntimeError("No history — call fit() first")
-
-        import matplotlib.pyplot as plt
-        from matplotlib.ticker import MaxNLocator
 
         loss = self.history["loss"]
         val_loss = self.history["val_loss"]
@@ -244,8 +247,7 @@ class BaseModel(ABC):
         if not path.exists():
             raise FileNotFoundError(f"No file found at {path}")
 
-        instance = cls.__new__(cls)  
-        BaseModel.__init__(instance) 
+        instance = cls() 
 
         suffix = path.suffix
         if suffix == ".keras":
@@ -256,3 +258,109 @@ class BaseModel(ABC):
             raise ValueError(f"Unrecognized file extension: {suffix}")
 
         return instance
+
+    
+    def compute_shap(
+        self,
+        X_test: np.ndarray,
+        feature_names: list[str],
+        background_size: int = 100,
+        sample_index: int = 0,
+        max_explain_samples: int = 300,
+        nsamples: int = 200,
+    ) -> None:
+        """
+        Compute SHAP values and produce three plots:
+        1. Beeswarm (global feature importance)
+        2. Waterfall (single prediction breakdown)
+        3. Temporal heatmap (timestep x feature SHAP values)
+
+        Attempts DeepSHAP first; falls back to KernelSHAP automatically if
+        DeepSHAP fails (e.g. due to unsupported layers in the Transformer).
+
+        Args:
+            X_test:          Test inputs, shape (n_samples, timesteps, n_features).
+            feature_names:   List of feature names, length == n_features.
+            background_size: Number of background samples for the explainer.
+            sample_index:    Which test sample to use for the waterfall plot.
+        """
+        assert self.model is not None, "Call build() and fit() before compute_shap()."
+        
+        if len(X_test) > max_explain_samples:
+            print(f"Subsampling X_test from {len(X_test)} to {max_explain_samples} samples for SHAP...")
+            idx = np.random.choice(len(X_test), size=max_explain_samples, replace=False)
+            X_test = X_test[idx]
+
+        background = X_test[:background_size]
+        n_samples, timesteps, n_features = X_test.shape
+
+        print("Computing SHAP values via KernelSHAP...")
+        flat_background = background.reshape(background_size, -1)
+        flat_X = X_test.reshape(n_samples, -1)
+
+        def model_predict_flat(x_flat):
+            return self.model.predict(
+                x_flat.reshape(-1, timesteps, n_features), verbose=0
+            ).flatten()
+
+        explainer = shap.KernelExplainer(model_predict_flat, flat_background)
+        shap_flat = explainer.shap_values(flat_X, nsamples=nsamples)
+        shap_values = shap_flat.reshape(n_samples, timesteps, n_features)
+        print("Done.")
+
+
+
+        shap_2d = shap_values.mean(axis=1)  
+        X_2d    = X_test.mean(axis=1)       
+
+        shap_exp = shap.Explanation(
+            values=shap_2d,
+            data=X_2d,
+            feature_names=feature_names,
+        )
+        plt.figure()
+        shap.plots.beeswarm(shap_exp, show=False)
+        plt.title("SHAP — Global Feature Importance (mean over timesteps)")
+        plt.tight_layout()
+        plt.savefig("shap_beeswarm.png", dpi=150)
+        plt.show()
+
+
+
+        base_val = explainer.expected_value
+        if isinstance(base_val, (list, np.ndarray)):
+            base_val = float(base_val[0])
+
+        single_exp = shap.Explanation(
+            values=shap_2d[sample_index],
+            base_values=float(base_val),
+            data=X_2d[sample_index],
+            feature_names=feature_names,
+        )
+        plt.figure()
+        shap.plots.waterfall(single_exp, show=False)
+        plt.title(f"SHAP — Waterfall for sample {sample_index}")
+        plt.tight_layout()
+        plt.savefig("shap_waterfall.png", dpi=150)
+        plt.show()
+
+
+
+        mean_abs = np.abs(shap_values).mean(axis=0) 
+
+        fig, ax = plt.subplots(figsize=(max(8, len(feature_names) * 0.7), 5))
+        im = ax.imshow(mean_abs.T, aspect="auto", cmap="YlOrRd")
+        ax.set_xticks(range(timesteps))
+        ax.set_xticklabels(
+            [f"t-{timesteps - i}" for i in range(timesteps)],
+            rotation=45, ha="right"
+        )
+        ax.set_yticks(range(len(feature_names)))
+        ax.set_yticklabels(feature_names)
+        ax.set_xlabel("Timestep (lag)")
+        ax.set_ylabel("Feature")
+        ax.set_title("SHAP — Mean |SHAP| by Timestep × Feature")
+        plt.colorbar(im, ax=ax, label="Mean |SHAP|")
+        plt.tight_layout()
+        plt.savefig("shap_temporal_heatmap.png", dpi=150)
+        plt.show()
