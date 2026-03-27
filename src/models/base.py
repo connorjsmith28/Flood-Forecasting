@@ -1,12 +1,19 @@
 """Base model class for flood forecasting models."""
 
-from abc import ABC, abstractmethod
-from pathlib import Path
 import os
 import json
+from abc import ABC, abstractmethod
+from pathlib import Path
+import pickle
 import numpy as np
 import tensorflow as tf
 import torch
+import shap
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
+
 def flood_prediction_accuracy(preds, actual, thresholds):
     """
     Calculate flood prediction accuracy for multiple quantiles.
