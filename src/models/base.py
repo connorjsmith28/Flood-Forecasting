@@ -135,16 +135,24 @@ class BaseModel(ABC):
         if self.model is not None:
             self.model.summary()
 
-    def save_model(self, path: str | Path, name: str = "model") -> Path:
+    def save_model(self, path: str | Path | None = None, name: str = "model") -> Path:
         """Save the trained model to disk.
 
         Automatically detects Keras vs PyTorch and saves in the appropriate
         native format (.keras or .pt).
         Returns the path to the saved file.
+        Defaults to saving in <repo_root>/src/models/trained_models/.
         """
         if self.model is None:
             raise RuntimeError("No model to save — call build() and fit() first")
-        path = Path(path)
+
+        repo_root = Path(__file__).resolve().parents[2]
+
+        if path is None:
+            path = repo_root / "src" / "models" / "trained_models"
+        else:
+            path = repo_root / path
+
         path.mkdir(parents=True, exist_ok=True)
 
         if isinstance(self.model, tf.keras.Model):
