@@ -1,53 +1,16 @@
 """Base model class for flood forecasting models."""
 
-from abc import ABC, abstractmethod
-from pathlib import Path
 import os
 import json
+from abc import ABC, abstractmethod
+from pathlib import Path
 import numpy as np
 import tensorflow as tf
 import torch
-def flood_prediction_accuracy(preds, actual, thresholds):
-    """
-    Calculate flood prediction accuracy for multiple quantiles.
-    Args:
-        preds:      np.ndarray, shape (n_samples,) — 1D array of predicted streamflow values
-        actual:     np.ndarray, shape (n_samples,) — 1D array of actual streamflow values
-        thresholds: dict mapping quantile name to threshold value
-    Returns:
-        List of accuracy metrics, one per quantile.
-    """
-    quantile_names = list(thresholds.keys())
-    accuracies = []
-    n_quantiles = len(quantile_names)
-    for q in quantile_names:
-        threshold = thresholds[q]
-        # Only evaluate on timesteps where actual streamflow exceeds the threshold (actual flood events)
-        flood_mask = actual >= threshold
-        if flood_mask.sum() == 0:
-            accuracies.append(0.0)
-            continue
-        flood_preds = preds[flood_mask]
-        flood_actuals = actual[flood_mask]
-        # Of those actual flood events, how many did the model also predict as flood?
-        correct = (flood_preds >= threshold).sum()
-        total = flood_mask.sum()
-        acc = correct / total
-        accuracies.append(float(acc))
-    try:
-        import matplotlib.pyplot as plt
-        plt.figure(figsize=(max(8, n_quantiles * 1.5), 4))
-        plt.bar(quantile_names, accuracies, color="skyblue")
-        plt.xlabel("Quantile")
-        plt.ylabel("Accuracy")
-        plt.title("Flood Prediction Accuracy by Quantile")
-        plt.ylim(0, 1)
-        plt.tight_layout()
-        plt.show()
-    except ImportError:
-        print("matplotlib is not installed; skipping plot.")
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 
-    return accuracies
+
 class BaseModel(ABC):
     """Abstract base for all flood forecasting models.
 
@@ -122,54 +85,10 @@ class BaseModel(ABC):
         threshold = self.dict_quantiles[site]
         return (prediction >= threshold).astype(np.int32)
 
-    def evaluate(
-        self,
-        X_test: np.ndarray,
-        y_test: np.ndarray,
-        site_ids: np.ndarray,
-        target_scaler,
-    ) -> None:
-        """Print a per-site table of actual mean, predicted mean, and MAE in original CFS scale.
-
-        Args:
-            X_test:        3D array of shape (num_sequences, window_size, num_features).
-            y_test:        1D array of shape (num_sequences,) in scaled units.
-            site_ids:      1D array of site ID strings aligned with X_test/y_test sequences.
-            target_scaler: Fitted TorchStandardScaler used to inverse transform predictions.
-        """
-        import torch
-
-        preds_scaled = self.predict(X_test).flatten()
-        
-        # Inverse transform both predictions and actuals back to CFS
-        preds_cfs = target_scaler.inverse_transform(
-            torch.tensor(preds_scaled).reshape(-1, 1)
-        ).numpy().flatten()
-        
-        actuals_cfs = target_scaler.inverse_transform(
-            torch.tensor(y_test).reshape(-1, 1)
-        ).numpy().flatten()
-
-        overall_loss = self.model.evaluate(X_test, y_test, verbose=0)
-        loss_name = self.model.loss if isinstance(self.model.loss, str) else "loss"
-        print(f"Overall test {loss_name}: {overall_loss[0]:.4f}  |  MAE (scaled): {overall_loss[1]:.4f}\n")
-        for site in np.unique(site_ids):
-            mask = site_ids == site
-            site_preds = preds_cfs[mask]
-            site_actuals = actuals_cfs[mask]
-            mae = np.mean(np.abs(site_actuals - site_preds))
-            print(f"Site {site}:")
-            print(f"  {'Split':<10} {'Actual Mean':>15} {'Predicted Mean':>15} {'MAE':>12}")
-            print(f"  {'-'*54}")
-            print(f"  {'Test':<10} {np.mean(site_actuals):>12.1f} CFS {np.mean(site_preds):>12.1f} CFS {mae:>8.1f} CFS")
-            flood_prediction_accuracy(site_preds, site_actuals, self.flood_quantiles[str(site)])
     def plot_training_history(self):
         """Plot training/validation loss and MAE curves."""
         if self.history is None:
             raise RuntimeError("No history — call fit() first")
-
-        import matplotlib.pyplot as plt
-        from matplotlib.ticker import MaxNLocator
 
         loss = self.history["loss"]
         val_loss = self.history["val_loss"]
@@ -200,54 +119,17 @@ class BaseModel(ABC):
         plt.tight_layout()
         plt.show()
 
-    def plot_results(
-        self,
-        X_test: np.ndarray,
-        y_test: np.ndarray,
-        target_scaler,
-        n_samples: int = 500,
-        site_id: str | None = None,
-    ) -> None:
-        """Plot predicted vs actual streamflow in original CFS scale.
-
-        Args:
-            X_test:        3D array of shape (num_sequences, window_size, num_features).
-            y_test:        1D array of shape (num_sequences,) in scaled units.
-            target_scaler: Fitted TorchStandardScaler to inverse transform back to CFS.
-            n_samples:     Number of timesteps to plot. Default 500.
-            site_id:       Optional site ID string for the plot title.
+    def evaluate(self, X_test: np.ndarray, y_test: np.ndarray) -> None:
+        """Print overall test loss and MAE in scaled units.
+        
+        For full per-site analysis, inverse-transformed CFS metrics, and
+        quantile accuracy, use PostProcessor.evaluate().
         """
-        import torch
-        import matplotlib.pyplot as plt
-
-        preds_scaled = self.predict(X_test).flatten()
-
-        preds_cfs = target_scaler.inverse_transform(
-            torch.tensor(preds_scaled).reshape(-1, 1)
-        ).numpy().flatten()
-
-        actuals_cfs = target_scaler.inverse_transform(
-            torch.tensor(y_test).reshape(-1, 1)
-        ).numpy().flatten()
-
-        # Slice to n_samples
-        preds_cfs = preds_cfs[:n_samples]
-        actuals_cfs = actuals_cfs[:n_samples]
-
-        title = f"Predictions vs Actual (first {n_samples} samples)"
-        if site_id is not None:
-            title = f"Site {site_id} — " + title
-
-        plt.figure(figsize=(14, 5))
-        plt.plot(actuals_cfs, label="Actual", color="steelblue")
-        plt.plot(preds_cfs, label="Predicted", color="orange")
-        plt.xlabel("Time step")
-        plt.ylabel("Streamflow (CFS)")
-        plt.title(title)
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
-        plt.show()
+        if self.model is None:
+            raise RuntimeError("Call build() before evaluate()")
+        results = self.model.evaluate(X_test, y_test, verbose=0)
+        loss_name = self.model.loss if isinstance(self.model.loss, str) else "loss"
+        print(f"Test {loss_name}: {results[0]:.4f}  |  MAE (scaled): {results[1]:.4f}")
 
     def summary(self):
         if self.model is not None:
@@ -290,8 +172,7 @@ class BaseModel(ABC):
         if not path.exists():
             raise FileNotFoundError(f"No file found at {path}")
 
-        instance = cls.__new__(cls)  
-        BaseModel.__init__(instance) 
+        instance = cls()
 
         suffix = path.suffix
         if suffix == ".keras":
@@ -302,4 +183,3 @@ class BaseModel(ABC):
             raise ValueError(f"Unrecognized file extension: {suffix}")
 
         return instance
-    
