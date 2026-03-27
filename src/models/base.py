@@ -2,11 +2,52 @@
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-import pickle
+import os
+import json
 import numpy as np
 import tensorflow as tf
 import torch
+def flood_prediction_accuracy(preds, actual, thresholds):
+    """
+    Calculate flood prediction accuracy for multiple quantiles.
+    Args:
+        preds:      np.ndarray, shape (n_samples,) — 1D array of predicted streamflow values
+        actual:     np.ndarray, shape (n_samples,) — 1D array of actual streamflow values
+        thresholds: dict mapping quantile name to threshold value
+    Returns:
+        List of accuracy metrics, one per quantile.
+    """
+    quantile_names = list(thresholds.keys())
+    accuracies = []
+    n_quantiles = len(quantile_names)
+    for q in quantile_names:
+        threshold = thresholds[q]
+        # Only evaluate on timesteps where actual streamflow exceeds the threshold (actual flood events)
+        flood_mask = actual >= threshold
+        if flood_mask.sum() == 0:
+            accuracies.append(0.0)
+            continue
+        flood_preds = preds[flood_mask]
+        flood_actuals = actual[flood_mask]
+        # Of those actual flood events, how many did the model also predict as flood?
+        correct = (flood_preds >= threshold).sum()
+        total = flood_mask.sum()
+        acc = correct / total
+        accuracies.append(float(acc))
+    try:
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(max(8, n_quantiles * 1.5), 4))
+        plt.bar(quantile_names, accuracies, color="skyblue")
+        plt.xlabel("Quantile")
+        plt.ylabel("Accuracy")
+        plt.title("Flood Prediction Accuracy by Quantile")
+        plt.ylim(0, 1)
+        plt.tight_layout()
+        plt.show()
+    except ImportError:
+        print("matplotlib is not installed; skipping plot.")
 
+    return accuracies
 class BaseModel(ABC):
     """Abstract base for all flood forecasting models.
 
@@ -21,7 +62,15 @@ class BaseModel(ABC):
         self.dict_quantiles: dict | None = None
         self.under_predict_penalty = under_predict_penalty
         self.learning_rate = learning_rate
-
+        self.flood_quantiles: dict | None = None
+        quantile_path = os.path.join(os.path.dirname(__file__), '../static/top_site_quantile_thesholds.json')
+        quantile_path = os.path.abspath(quantile_path)
+        if os.path.exists(quantile_path):
+            try:
+                with open(quantile_path, 'r') as f:
+                    self.flood_quantiles = json.load(f)
+            except Exception as e:
+                print(f"Warning: Could not load flood quantiles from {quantile_path}: {e}")
     def _loss(self):
         if self.under_predict_penalty == 1.0:
             return "mse"
@@ -104,19 +153,16 @@ class BaseModel(ABC):
         overall_loss = self.model.evaluate(X_test, y_test, verbose=0)
         loss_name = self.model.loss if isinstance(self.model.loss, str) else "loss"
         print(f"Overall test {loss_name}: {overall_loss[0]:.4f}  |  MAE (scaled): {overall_loss[1]:.4f}\n")
-        
         for site in np.unique(site_ids):
             mask = site_ids == site
             site_preds = preds_cfs[mask]
             site_actuals = actuals_cfs[mask]
             mae = np.mean(np.abs(site_actuals - site_preds))
-
             print(f"Site {site}:")
             print(f"  {'Split':<10} {'Actual Mean':>15} {'Predicted Mean':>15} {'MAE':>12}")
             print(f"  {'-'*54}")
             print(f"  {'Test':<10} {np.mean(site_actuals):>12.1f} CFS {np.mean(site_preds):>12.1f} CFS {mae:>8.1f} CFS")
-            print()
-
+            flood_prediction_accuracy(site_preds, site_actuals, self.flood_quantiles[str(site)])
     def plot_training_history(self):
         """Plot training/validation loss and MAE curves."""
         if self.history is None:
@@ -256,3 +302,4 @@ class BaseModel(ABC):
             raise ValueError(f"Unrecognized file extension: {suffix}")
 
         return instance
+    
