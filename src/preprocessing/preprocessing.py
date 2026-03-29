@@ -427,17 +427,25 @@ class processor():
             print("\nPipeline outputs uploaded to W&B.")
 
     def save(self, path: str) -> None:
-        """Serialize the entire processor to a pickle file via joblib."""
+        """Serialize config and fitted scalers to a file via joblib."""
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-        joblib.dump(self, path)
+        payload = {
+            "config": self.config,
+            "feature_scaler": self.feature_scaler,
+            "target_scaler": self.target_scaler,
+        }
+        joblib.dump(payload, path)
         print(f"Preprocessor saved to {path}")
 
     @classmethod
     def load(cls, path: str) -> "processor":
-        """Load a processor instance from a pickle file saved with save()."""
-        instance = joblib.load(path)
-        if not isinstance(instance, cls):
-            raise TypeError(f"Expected a processor instance, got {type(instance)}")
+        """Load a processor instance from a file saved with save()."""
+        payload = joblib.load(path)
+        if not isinstance(payload, dict):
+            raise TypeError(f"Expected a dict payload, got {type(payload)}")
+        instance = cls(payload["config"])
+        instance.feature_scaler = payload["feature_scaler"]
+        instance.target_scaler = payload["target_scaler"]
         return instance
 
     def prep_inference(
