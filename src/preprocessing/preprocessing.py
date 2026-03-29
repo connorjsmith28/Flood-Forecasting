@@ -384,7 +384,20 @@ class processor():
             self.val_y_scaled,
             self.test_y_scaled,
         )
-        
+
+    def unscale(self, arr: np.ndarray, site_ids: np.ndarray | None = None) -> np.ndarray:
+        """Inverse-transform predictions using the fitted target_scaler.
+
+        Args:
+            arr: Scaled predictions, shape (n,) or (n, 1).
+            site_ids: Site ID strings aligned with arr. Required only when the
+                      processor was configured with site_scaling=True.
+
+        Returns:
+            Unscaled numpy array of the same shape as ``arr``.
+        """
+        return unscale(arr, self.target_scaler, site_ids)
+
     def save_to_wandb(self, artifact_name, artifact_type, artifact_description, out_dir):
         os.makedirs(out_dir, exist_ok=True)
 
@@ -412,6 +425,131 @@ class processor():
             run.log_artifact(artifact, aliases=["latest"])
             run.finish()
             print("\nPipeline outputs uploaded to W&B.")
+
+    def save(self, path: str) -> None:
+        """Serialize config and fitted scalers to a file via joblib."""
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        payload = {
+            "config": self.config,
+            "feature_scaler": self.feature_scaler,
+            "target_scaler": self.target_scaler,
+        }
+        joblib.dump(payload, path)
+        print(f"Preprocessor saved to {path}")
+
+    @classmethod
+    def load(cls, path: str) -> "processor":
+        """Load a processor instance from a file saved with save()."""
+        payload = joblib.load(path)
+        if not isinstance(payload, dict):
+            raise TypeError(f"Expected a dict payload, got {type(payload)}")
+        instance = cls(payload["config"])
+        instance.feature_scaler = payload["feature_scaler"]
+        instance.target_scaler = payload["target_scaler"]
+        return instance
+
+    def prep_inference(
+        self,
+        df: pl.DataFrame | None = None,
+        *,
+        wandb_config: dict | None = None,
+    ) -> pl.DataFrame:
+        """Prepare data for model inference using the fitted scalers.
+
+        Applies the same feature engineering as preprocess() (column selection,
+        sorting, lag creation) but uses the already-fitted feature_scaler —
+        no refitting, no train/val/test splitting.
+
+        Supply exactly one data source:
+          - ``df``           : a raw Polars DataFrame already in memory.
+          - ``wandb_config`` : a dict with W&B keys ``file_name``, ``file_path``
+                               and optionally ``sites``, ``start_date``,
+                               ``end_date``, ``frequency``. The artifact will be
+                               pulled and used as the input DataFrame.
+
+        Args:
+            df: Raw Polars DataFrame with at least site_id, observation_hour,
+                and all columns listed in config["input_cols"].
+            wandb_config: W&B artifact config dict. When provided, ``df`` is
+                ignored and data is fetched from W&B instead.
+
+        Returns:
+            Scaled Polars DataFrame with site_id, observation_hour, and all
+            model input columns (original + lag features), ready for inference.
+        """
+        if self.feature_scaler.mean_ is None and self.feature_scaler.site_mean_ is None:
+            raise RuntimeError("Scaler is not fitted. Run preprocess() or load a saved processor first.")
+
+        if wandb_config is not None:
+            df = pull_wandb(
+                wandb_config["file_name"],
+                wandb_config["file_path"],
+                sites=wandb_config.get("sites"),
+                start_date=wandb_config.get("start_date"),
+                end_date=wandb_config.get("end_date"),
+                frequency=wandb_config.get("frequency"),
+            )
+        elif df is None:
+            raise ValueError("Provide either a DataFrame via 'df' or a W&B config via 'wandb_config'.")
+
+        features = ["site_id", "observation_hour"] + self.config["input_cols"]
+        df = df.select(features)
+        df = df.sort(["site_id", "observation_hour"])
+
+        static_col_names = self.config.get("static_cols", ["latitude", "longitude"])
+
+        exprs = []
+        for val in self.config["input_cols"]:
+            if val in static_col_names:
+                continue
+            for idx in range(1, self.config["lag_window"]):
+                exprs.append(pl.col(val).shift(idx).over("site_id").alias(f"{val}{idx}"))
+        df = df.with_columns(exprs)
+
+        original_cols = [v for v in self.config["input_cols"] if v not in static_col_names]
+        static_cols = [v for v in self.config["input_cols"] if v in static_col_names]
+        lagged_cols = [
+            f"{val}{idx}"
+            for val in self.config["input_cols"]
+            if val not in static_col_names
+            for idx in range(1, self.config["lag_window"])
+        ]
+        model_input_cols = original_cols + static_cols + lagged_cols
+
+        df = df.drop_nulls(subset=lagged_cols)
+        df = df.drop_nulls()
+
+        X = torch.tensor(df.select(model_input_cols).to_numpy(), dtype=torch.float64)
+        site_ids = df["site_id"].to_numpy()
+
+        use_site_scaling = self.config.get("site_scaling", False)
+        if use_site_scaling:
+            X_scaled = self.feature_scaler.transform_by_site(X, site_ids)
+        else:
+            X_scaled = self.feature_scaler.transform(X)
+
+        scaled_df = pl.DataFrame(X_scaled.numpy(), schema=model_input_cols)
+        return pl.concat([df.select(["site_id", "observation_hour"]), scaled_df], how="horizontal")
+
+def unscale(arr: np.ndarray, scaler: "TorchStandardScaler", site_ids: np.ndarray | None = None) -> np.ndarray:
+    """Inverse-transform a scaled numpy array using a fitted TorchStandardScaler.
+
+    Args:
+        arr: Scaled values as a numpy array of shape (n,) or (n, 1).
+        scaler: A fitted TorchStandardScaler (e.g. processor.target_scaler).
+        site_ids: Optional array of site ID strings, shape (n,). Required when
+                  the scaler was fitted with fit_by_site(); ignored otherwise.
+
+    Returns:
+        Unscaled numpy array of the same shape as ``arr``.
+    """
+    t = torch.tensor(arr, dtype=torch.float64).reshape(-1, 1)
+    if site_ids is not None and scaler.site_mean_ is not None:
+        out = scaler.inverse_transform_by_site(t, site_ids)
+    else:
+        out = scaler.inverse_transform(t)
+    return out.numpy().reshape(arr.shape)
+
 
 def safe_drop(df, cols):
     existing = [c for c in cols if c in df.columns]
