@@ -99,9 +99,9 @@ def pull_duckdb(
 
 def create_sequences(
     X: pl.DataFrame,
-    y: pl.DataFrame,
+    y: pl.DataFrame | None,
     window_size: int,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray | None, np.ndarray]:
 
     """Create sliding window sequences per site for sequence models (LSTM, GRU, Transformer, etc.).
 
@@ -111,32 +111,40 @@ def create_sequences(
 
     Args:
         X: Polars DataFrame with a 'site_id' column and feature columns.
-        y: Polars DataFrame with a single target column, row-aligned with X.
+        y: Polars DataFrame with a single target column, row-aligned with X. If None,
+           the returned y_seq will also be None (useful for inference).
         window_size: Number of timesteps per sequence (e.g. 24 for 24-hour lookback).
 
     Returns:
         X_seq: np.ndarray of shape (num_sequences, window_size, num_features)
-        y_seq: np.ndarray of shape (num_sequences,)
+        y_seq: np.ndarray of shape (num_sequences,), or None if y was not provided.
 
     Notes:
         - Sites with fewer rows than `window_size` are skipped entirely.
         - Sequences do not cross site boundaries.
         - Compatible with PyTorch (LSTM, GRU) and TensorFlow/Keras 3D input.
     """
-    target_col = y.columns[0]
-    combined = X.with_columns(y[target_col])
     feature_cols = [c for c in X.columns if c not in ("site_id", "observation_hour")]
 
-    X_sequences, y_sequences, site_id_sequences = [], [], []  # added site_id_sequences
+    if y is not None:
+        target_col = y.columns[0]
+        combined = X.with_columns(y[target_col])
+    else:
+        target_col = None
+        combined = X
+
+    X_sequences, y_sequences, site_id_sequences = [], [], []
     for site in combined["site_id"].unique().sort().to_list():
         site_df = combined.filter(pl.col("site_id") == site)
         site_X = site_df.select(feature_cols).to_numpy()
-        site_y = site_df[target_col].to_numpy()
         if len(site_X) < window_size:
             continue
+        site_y = site_df[target_col].to_numpy() if target_col is not None else None
         for i in range(len(site_X) - window_size):
             X_sequences.append(site_X[i : i + window_size])
-            y_sequences.append(site_y[i + window_size - 1])
-            site_id_sequences.append(site)  # added
+            if site_y is not None:
+                y_sequences.append(site_y[i + window_size - 1])
+            site_id_sequences.append(site)
 
-    return np.array(X_sequences), np.array(y_sequences), np.array(site_id_sequences)
+    y_out = np.array(y_sequences) if y is not None else None
+    return np.array(X_sequences), y_out, np.array(site_id_sequences)
