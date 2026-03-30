@@ -12,7 +12,7 @@ from tensorflow.keras.layers import (
 
 from src.models.base import BaseModel
 
-
+@tf.keras.saving.register_keras_serializable()
 class TransformerBlock(tf.keras.layers.Layer):
     """Single Transformer encoder block: multi-head self-attention + feed-forward."""
 
