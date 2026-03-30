@@ -34,13 +34,14 @@ class BaseModel(ABC):
                     self.flood_quantiles = json.load(f)
             except Exception as e:
                 print(f"Warning: Could not load flood quantiles from {quantile_path}: {e}")
+    
     def _loss(self):
         if self.under_predict_penalty == 1.0:
             return "mse"
         penalty = self.under_predict_penalty
         def asymmetric_mse(y_true, y_pred):
             error = y_true - y_pred
-            weight = tf.where(error > 0, penalty, 1.0)
+            weight = tf.where(error > 0, tf.cast(penalty, tf.float32), tf.cast(1.0, tf.float32))
             return tf.reduce_mean(weight * tf.square(error))
         return asymmetric_mse
 
@@ -149,7 +150,7 @@ class BaseModel(ABC):
         repo_root = Path(__file__).resolve().parents[2]
 
         if path is None:
-            path = repo_root / "src" / "models" / "trained_models"
+            path = repo_root / "src" / "models" / "trained_models" / f"{name}.keras"
         else:
             path = repo_root / path
 
@@ -169,14 +170,17 @@ class BaseModel(ABC):
         return out_path
 
     @classmethod
-    def load_model(cls, path: str | Path) -> "BaseModel":
+    def load_model(cls, name: str | Path, custom_objects: dict = None) -> "BaseModel":
         """Reconstruct a model instance from a saved file.
         
         Usage:
             model = LSTMModel.load_model("models/lstm.keras")
             model.predict(X_test)
         """
-        path = Path(path)
+
+        repo_root = Path(__file__).resolve().parents[2]
+        path = repo_root / "src" / "models" / "trained_models" / name
+
         if not path.exists():
             raise FileNotFoundError(f"No file found at {path}")
 
@@ -184,7 +188,7 @@ class BaseModel(ABC):
 
         suffix = path.suffix
         if suffix == ".keras":
-            instance.model = tf.keras.models.load_model(path)
+            instance.model = tf.keras.models.load_model(path, custom_objects=custom_objects)
         elif suffix == ".pt":
             instance.model = torch.load(path, weights_only=True)
         else:
