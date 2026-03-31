@@ -140,9 +140,16 @@ class BaseModel(ABC):
         """Save the trained model to disk.
 
         Automatically detects Keras vs PyTorch and saves in the appropriate
-        native format (.keras or .pt).
-        Returns the path to the saved file.
-        Defaults to saving in <repo_root>/src/models/trained_models/.
+        native format (.keras or .pt). All paths are anchored to the repo root.
+        Defaults to saving in <repo_root>/models/.
+
+        Args:
+            path: Optional subdirectory relative to repo root (e.g. "models/gru").
+                Defaults to "models/" if not provided.
+            name: Filename without extension (e.g. "gru_model").
+
+        Returns:
+            Path to the saved file.
         """
         if self.model is None:
             raise RuntimeError("No model to save — call build() and fit() first")
@@ -150,27 +157,25 @@ class BaseModel(ABC):
         repo_root = Path(__file__).resolve().parents[2]
 
         if path is None:
-            path = repo_root / "src" / "models" / "trained_models" / f"{name}.keras"
+            directory = repo_root / "models"
         else:
-            path = repo_root / path
+            directory = repo_root / path
 
-        path.mkdir(parents=True, exist_ok=True)
+        directory.mkdir(parents=True, exist_ok=True)
 
         if isinstance(self.model, tf.keras.Model):
-            out_path = path / f"{name}.keras"
+            out_path = directory / f"{name}.keras"
             self.model.save(out_path)
-
         elif isinstance(self.model, torch.nn.Module):
-            out_path = path / f"{name}.pt"
+            out_path = directory / f"{name}.pt"
             torch.save(self.model, out_path)
-
         else:
             raise TypeError(f"Unsupported model type: {type(self.model)}")
 
         return out_path
 
     @classmethod
-    def load_model(cls, name: str | Path, custom_objects: dict = None) -> "BaseModel":
+    def load_model(cls, name: str | Path, override_path: str | None = None, custom_objects: dict = None) -> "BaseModel":
         """Reconstruct a model instance from a saved file.
         
         Usage:
@@ -179,7 +184,10 @@ class BaseModel(ABC):
         """
 
         repo_root = Path(__file__).resolve().parents[2]
-        path = repo_root / "src" / "models" / "trained_models" / name
+        if override_path is None:
+            path = repo_root / "models" / name
+        else:
+            path = repo_root / override_path / name
 
         if not path.exists():
             raise FileNotFoundError(f"No file found at {path}")
