@@ -54,6 +54,7 @@ import numpy as np
 import polars as pl
 import torch
 import wandb
+from pathlib import Path
 from src.utils.helpers import pull_wandb, pull_duckdb
 
 class TorchStandardScaler:
@@ -426,23 +427,45 @@ class processor():
             run.finish()
             print("\nPipeline outputs uploaded to W&B.")
 
-    def save(self, path: str) -> None:
+    def save(self, path: str | None = None, name: str = "preprocessor") -> None:
         """Serialize config and fitted scalers to a file via joblib."""
-        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        
+        repo_root = Path(__file__).resolve().parents[2]
+
+        if path is None:
+            directory = repo_root / "models" / "preprocessors"
+        else:
+            directory = repo_root / path
+
+        directory.mkdir(parents=True, exist_ok=True)
+        out_path = directory / f"{name}.pkl"
+
         payload = {
             "config": self.config,
             "feature_scaler": self.feature_scaler,
             "target_scaler": self.target_scaler,
         }
-        joblib.dump(payload, path)
-        print(f"Preprocessor saved to {path}")
+        joblib.dump(payload, out_path)
+        print(f"Preprocessor saved to {out_path}")
 
     @classmethod
-    def load(cls, path: str) -> "processor":
+    def load(cls, name: str, path: str | None = None) -> "processor":
         """Load a processor instance from a file saved with save()."""
-        payload = joblib.load(path)
+        
+        repo_root = Path(__file__).resolve().parents[2]
+
+        if path is None:
+            file_path = repo_root / "models" / "preprocessors" / f"{name}.pkl"
+        else:
+            file_path = repo_root / path / f"{name}.pkl"
+
+        if not file_path.exists():
+            raise FileNotFoundError(f"No preprocessor found at {file_path}")
+
+        payload = joblib.load(file_path)
         if not isinstance(payload, dict):
             raise TypeError(f"Expected a dict payload, got {type(payload)}")
+
         instance = cls(payload["config"])
         instance.feature_scaler = payload["feature_scaler"]
         instance.target_scaler = payload["target_scaler"]
