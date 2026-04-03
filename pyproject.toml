@@ -39,7 +39,9 @@ dependencies = [
     "exactextract>=0.2.0",
     "earthaccess>=0.16.0",
     "tensorflow>=2.14.0",
+    "darts>=0.28.0",
     "python-pptx>=1.0.2",
+    "pytorch-lightning>=2.6.1",
 ]
 
 [project.optional-dependencies]
