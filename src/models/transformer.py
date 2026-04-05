@@ -12,13 +12,13 @@ from tensorflow.keras.layers import (
 
 from src.models.base import BaseModel
 
-@tf.keras.saving.register_keras_serializable()
+@tf.keras.utils.register_keras_serializable()
 class TransformerBlock(tf.keras.layers.Layer):
     """Single Transformer encoder block: multi-head self-attention + feed-forward."""
 
     def __init__(self, d_model: int, num_heads: int, ff_dim: int, dropout: float = 0.1, **kwargs):
         super().__init__(**kwargs)
-        self.attn = MultiHeadAttention(num_heads=num_heads, key_dim=d_model)
+        self.attn = MultiHeadAttention(num_heads=num_heads, key_dim=d_model // num_heads)
         self.ffn = tf.keras.Sequential([
             Dense(ff_dim, activation="relu"),
             Dense(d_model),
@@ -34,7 +34,7 @@ class TransformerBlock(tf.keras.layers.Layer):
         super().build(input_shape)
 
     def call(self, x, training=False):
-        attn_out = self.attn(x, x)
+        attn_out = self.attn(x, x, training=training)
         x = self.norm1(x + self.dropout1(attn_out, training=training))
         ffn_out = self.ffn(x)
         return self.norm2(x + self.dropout2(ffn_out, training=training))

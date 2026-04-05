@@ -1,6 +1,8 @@
 # Flood Forecasting
 
-ML flood forecasting for the Missouri River Basin (HUC 10). Extracts hydrological and meteorological data from public APIs, transforms it with dbt, and trains models tracked with Weights & Biases.
+ML flood forecasting for the Missouri River Basin (HUC 10). Extracts hydrological and meteorological data from public APIs, transforms it with dbt, and trains deep learning models tracked with Weights & Biases.
+
+Implements LSTM, GRU, hybrid LSTM-Transformer, Temporal Fusion Transformer (TFT), and Graph Neural Network (GNN) models for multi-site streamflow prediction.
 
 https://dashboard.waterdata.usgs.gov/app/nwd/en/
 
@@ -79,11 +81,14 @@ Results are logged to the [flood-forecasting](https://wandb.ai) W&B project.
 | Command | Description |
 |---------|-------------|
 | `just extract` | Extract data from APIs |
+| `just extract-fresh` | Clear HTTP cache and re-extract |
 | `just transform` | Run dbt build (run + test) |
 | `just experiment <model>` | Run single training experiment |
-| `just sweep <model> [n]` | Run hyperparameter sweep |
+| `just sweep <model> [n]` | Run hyperparameter sweep (default 5 runs) |
 | `just dagster` | Launch Dagster UI |
 | `just db` | Launch DuckDB UI (read-only) |
+| `just db-write` | Launch DuckDB UI (write access) |
+| `just download-wandb` | Download dataset artifact from W&B |
 | `just lint` | Lint Python and SQL |
 | `just dbt-docs` | Generate and serve dbt docs |
 
@@ -98,16 +103,18 @@ src/
   elt/
     extraction/         # Python scripts to fetch data from APIs
     transformation/     # dbt project (staging + marts)
-  utils/                # Helper functions for notebooks/models
-  features/             # Feature engineering
-  models/               # ML model utilities
+  models/               # Model definitions (LSTM, GRU, Hybrid, TFT, GNN, Transformer)
+  preprocessing/        # Data preprocessing and GNN graph preprocessing
+  postprocessing/       # Inference, evaluation, and SHAP explainability
+  utils/                # Helper functions
+  static/               # Static assets (flood quantile thresholds)
 notebooks/
+  model_training/       # Training scripts + sweep configs (lstm/, gru/, hybrid/, tft/, gnn/)
+  model_exploration/    # Post-training analysis with SHAP (lstm/, gru/, hybrid/)
   data_exploration/     # Data analysis notebooks
-  model_training/       # ML models (training scripts + sweep configs)
-models/                 # Standalone ML models
-reports/
-  figures/              # Generated figures
-  results/              # Model results
+demo/                   # Standalone demo (train.ipynb + inference.ipynb)
+models/                 # Saved model weights (.keras)
+artifacts/              # W&B dataset artifacts
 brew/                   # Brewfile for macOS dependencies
 ```
 
@@ -140,16 +147,30 @@ Seed data comes from the [CAMELS dataset](https://www.osti.gov/pages/servlets/pu
 
 ## Creating New Models
 
-1. Copy `notebooks/model_training/test_model.py` and `notebooks/model_training/test_model.yml`
-2. Update the model architecture and sweep parameters
-3. Run with `just experiment <name>` or `just sweep <name>`
+1. Copy `notebooks/model_training/lstm/series/lstm_model.ipynb` or any existing model notebook as a starting point
+2. Add a new `.py` training script and `.yml` sweep config under `notebooks/model_training/`
+3. Implement the model class in `src/models/` extending `BaseModel`
+4. Run with `just experiment <name>` or `just sweep <name>`
 
 See [notebooks/model_training/README.md](notebooks/model_training/README.md) for details.
+
+## Model Architectures
+
+| Model | Description |
+|-------|-------------|
+| LSTM | Two-layer LSTM with optional asymmetric MSE loss (penalises under-prediction) |
+| GRU | Gated Recurrent Unit — lighter alternative to LSTM |
+| Hybrid | LSTM + Transformer encoder for sequence-to-scalar prediction |
+| TFT | Temporal Fusion Transformer via Darts library with attention explainability |
+| GNN | Spatio-temporal GNN: per-node LSTM → GATv2 message passing over river network |
+
+SHAP explainability analysis is available for LSTM, GRU, and Hybrid models via `src/postprocessing/postprocessing.py` and the `notebooks/model_exploration/` notebooks.
 
 ## Tech Stack
 
 - **Data Processing**: Polars, DuckDB
-- **ML Frameworks**: PyTorch, scikit-learn
+- **ML Frameworks**: TensorFlow/Keras (LSTM, GRU, Hybrid), PyTorch + PyTorch Geometric (GNN), Darts (TFT)
+- **Explainability**: SHAP
 - **Experiment Tracking**: Weights & Biases
 - **Orchestration**: Dagster
 - **Transformation**: dbt

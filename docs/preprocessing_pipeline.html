@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Flood Forecasting — Preprocessing Pipeline</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2d3148;
+      --accent: #4f8ef7;
+      --accent2: #7c5cbf;
+      --text: #e2e8f0;
+      --muted: #8892a4;
+      --green: #34d399;
+      --yellow: #fbbf24;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 2rem;
+      line-height: 1.6;
+    }
+
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin-bottom: 0.25rem;
+      color: #fff;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin-bottom: 2.5rem;
+    }
+
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem 2rem;
+      margin-bottom: 2rem;
+    }
+
+    .section h2 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 1.25rem;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      font-size: 0.8rem;
+    }
+
+    /* ---- diagram ---- */
+    .mermaid {
+      display: flex;
+      justify-content: center;
+      overflow-x: auto;
+    }
+
+    /* ---- shape table ---- */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+
+    thead tr {
+      background: #22263a;
+    }
+
+    th {
+      text-align: left;
+      padding: 0.6rem 1rem;
+      color: var(--accent);
+      font-weight: 600;
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    td {
+      padding: 0.55rem 1rem;
+      border-top: 1px solid var(--border);
+      color: var(--text);
+      vertical-align: top;
+    }
+
+    td code, th code {
+      background: #0f1117;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.1em 0.4em;
+      font-family: "JetBrains Mono", "Fira Code", monospace;
+      font-size: 0.82em;
+      color: var(--green);
+    }
+
+    tr:hover td {
+      background: #1e2235;
+    }
+
+    /* ---- step cards ---- */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 1rem;
+    }
+
+    .step-card {
+      background: #13162200;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+    }
+
+    .step-card .step-num {
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: var(--accent2);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 0.25rem;
+    }
+
+    .step-card h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 0.5rem;
+    }
+
+    .step-card p {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .step-card .file-ref {
+      display: inline-block;
+      margin-top: 0.6rem;
+      font-size: 0.78rem;
+      color: var(--accent);
+      font-family: "JetBrains Mono", "Fira Code", monospace;
+      background: #1a1d27;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.15em 0.5em;
+    }
+
+    .step-card pre {
+      margin-top: 0.75rem;
+      background: #0a0c14;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      font-size: 0.78rem;
+      color: #a0c4ff;
+      font-family: "JetBrains Mono", "Fira Code", monospace;
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+
+    .tag {
+      display: inline-block;
+      font-size: 0.72rem;
+      padding: 0.1em 0.5em;
+      border-radius: 999px;
+      font-weight: 600;
+      margin-right: 0.35rem;
+    }
+
+    .tag-green  { background: #064e3b; color: var(--green); }
+    .tag-yellow { background: #451a03; color: var(--yellow); }
+    .tag-blue   { background: #1e3a5f; color: #93c5fd; }
+    .tag-purple { background: #2e1065; color: #c4b5fd; }
+
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.78rem;
+      margin-top: 2rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Flood Forecasting — Preprocessing Pipeline</h1>
+  <p class="subtitle">Missouri River Basin · Data flow from raw database to model-ready 3-D sequences</p>
+
+  <!-- ── FLOWCHART ── -->
+  <div class="section">
+    <h2>Pipeline Flowchart</h2>
+    <div class="mermaid">
+flowchart TD
+    A["🗄️  DuckDB / W&B Artifact\nfinal.flood_model\npl.DataFrame [N_rows × all_cols]"]
+
+    A -->|"pull_duckdb / pull_wandb\nsrc/utils/helpers.py"| B
+
+    B["📋  Feature Selection\ndf.select(['site_id','observation_hour'] + input_cols)\npl.DataFrame [N × 2+n_inputs]"]
+
+    B --> C["🎯  Target Creation — forward shift\nstreamflow_cfs_mean_target\n= streamflow shifted –24 h (hourly) or –1 d (daily)\nper-site via .over('site_id')\nDrops last shift_amount rows per site"]
+
+    C --> D["⏪  Lag Feature Engineering\nFor each dynamic col: create lag_1 … lag_(window-1)\nStatic cols (lat/lon) NOT lagged\nmodel_input_cols = dynamic + static + lagged\nExample: 3 dyn + 2 static + 3×23 lags = 74 features\nDrops first lag_window rows per site"]
+
+    D -->|"train_val_test_split_by_time\nsrc/preprocessing/preprocessing.py"| E
+
+    E["✂️  Chronological Split\n70 % train · 15 % val · 15 % test\nOR rolling N-day chunks (no leakage)\n→ 3 × pl.DataFrame"]
+
+    E --> F["📏  TorchStandardScaler  z = (x−μ)/σ\nFit on TRAIN only, apply to val & test\nSeparate feature_scaler + target_scaler\nMode: global (default) or per-site\n→ train/val/test X & y scaled DataFrames"]
+
+    F -->|"create_sequences(window_size=72)\nsrc/utils/helpers.py"| G
+
+    G["🪟  Sliding Window — per site\nfor i in range(len_site − 72):\n  X_seq = site_X[i : i+72]   shape [72, n_features]\n  y_seq = site_y[i+72−1]     label at last step\nWindows never cross site boundaries"]
+
+    G --> H["✅  Model-Ready Tensors\nX  → np.ndarray [N_seqs, 72, n_features]\ny  → np.ndarray [N_seqs]\nsite_ids → np.ndarray [N_seqs]"]
+
+    style A fill:#1e3a5f,stroke:#4f8ef7,color:#e2e8f0
+    style H fill:#064e3b,stroke:#34d399,color:#e2e8f0
+    style E fill:#2e1065,stroke:#7c5cbf,color:#e2e8f0
+    style F fill:#451a03,stroke:#fbbf24,color:#e2e8f0
+    </div>
+  </div>
+
+  <!-- ── STEP CARDS ── -->
+  <div class="section">
+    <h2>Step-by-Step Detail</h2>
+    <div class="steps">
+
+      <div class="step-card">
+        <div class="step-num">Step 1</div>
+        <h3>Data Ingestion</h3>
+        <p>Two loaders both return a <code>pl.DataFrame</code> sorted by <code>(site_id, observation_hour)</code>.</p>
+        <pre>pull_duckdb(...)   # parameterized SQL on DuckDB
+pull_wandb(...)    # downloads W&B Parquet artifact
+
+frequency="daily" → keeps only hour=12 observations</pre>
+        <span class="file-ref">src/utils/helpers.py</span>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">Step 2</div>
+        <h3>Feature Selection &amp; Target Creation</h3>
+        <p>Select only needed columns, then create the prediction target by shifting streamflow forward.</p>
+        <pre>shift_amount = 1      # daily
+shift_amount = 24     # hourly
+
+target = streamflow_cfs_mean
+         .shift(-shift_amount)
+         .over("site_id")</pre>
+        <span class="file-ref">src/preprocessing/preprocessing.py</span>
+        <span class="tag tag-yellow">drops last shift_amount rows/site</span>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">Step 3</div>
+        <h3>Lag Feature Engineering</h3>
+        <p>Expands dynamic features into lagged copies. Static attributes (lat/lon) are not lagged.</p>
+        <pre>for col in dynamic_cols:
+  for lag in range(1, lag_window):   # e.g. 1..23
+    col_lag = col.shift(lag).over("site_id")
+
+n_features = n_dyn
+           + n_static
+           + n_dyn × (lag_window - 1)</pre>
+        <span class="file-ref">src/preprocessing/preprocessing.py</span>
+        <span class="tag tag-yellow">drops first lag_window rows/site</span>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">Step 4</div>
+        <h3>Train / Val / Test Split</h3>
+        <p>Chronological split preserving temporal order. Two modes available.</p>
+        <pre>Mode A — single cut (split_time_days=None):
+  train ← first 70 % of timestamps
+  val   ← next 15 %
+  test  ← final 15 %
+
+Mode B — rolling chunks (split_time_days=365):
+  Each N-day chunk independently split 70/15/15
+  Prevents temporal leakage on long records</pre>
+        <span class="file-ref">src/preprocessing/preprocessing.py</span>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">Step 5</div>
+        <h3>Feature Scaling — TorchStandardScaler</h3>
+        <p>Z-score normalisation. Fit on train only — no data leakage.</p>
+        <pre>z = (x − μ) / σ
+
+Global mode  (site_scaling=False):
+  one mean/std per feature column
+
+Per-site mode (site_scaling=True):
+  separate mean/std per site
+
+feature_scaler  ≠  target_scaler</pre>
+        <span class="file-ref">src/preprocessing/preprocessing.py</span>
+        <span class="tag tag-green">no leakage</span>
+      </div>
+
+      <div class="step-card">
+        <div class="step-num">Step 6</div>
+        <h3>create_sequences — Sliding Window</h3>
+        <p>Converts scaled DataFrames into 3-D tensors using a rolling window. Windows never cross site boundaries.</p>
+        <pre>window_size = 72   # 72-hour lookback
+
+for site in sites:
+  for i in range(len(site) - window_size):
+    X_seq = site_X[i : i + window_size]
+            # shape [72, n_features]
+    y_seq = site_y[i + window_size - 1]
+            # label at LAST step of window</pre>
+        <span class="file-ref">src/utils/helpers.py</span>
+        <span class="tag tag-blue">output: [N_seqs, 72, n_features]</span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── SHAPE TABLE ── -->
+  <div class="section">
+    <h2>Shape Transformations at Each Step</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Step</th>
+          <th>Shape</th>
+          <th>Format</th>
+          <th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Raw load</td>
+          <td><code>[N_rows, all_cols]</code></td>
+          <td><code>pl.DataFrame</code></td>
+          <td>Sorted by <code>(site_id, observation_hour)</code></td>
+        </tr>
+        <tr>
+          <td>Feature select</td>
+          <td><code>[N, 2 + n_inputs]</code></td>
+          <td><code>pl.DataFrame</code></td>
+          <td>Drops unused columns</td>
+        </tr>
+        <tr>
+          <td>After target shift</td>
+          <td><code>[N − shift×n_sites, ...]</code></td>
+          <td><code>pl.DataFrame</code></td>
+          <td>Last <code>shift_amount</code> rows per site dropped</td>
+        </tr>
+        <tr>
+          <td>After lag creation</td>
+          <td><code>[N_trim, 2 + n_features]</code></td>
+          <td><code>pl.DataFrame</code></td>
+          <td><code>n_features = n_dyn + n_static + n_dyn×(lag_window−1)</code></td>
+        </tr>
+        <tr>
+          <td>After split</td>
+          <td><code>3 × [N_split, ...]</code></td>
+          <td><code>pl.DataFrame</code></td>
+          <td>70 % / 15 % / 15 % by timestamp</td>
+        </tr>
+        <tr>
+          <td>After scaling (X)</td>
+          <td><code>[N_split, 2 + n_features]</code></td>
+          <td><code>pl.DataFrame</code></td>
+          <td><code>site_id</code> + <code>observation_hour</code> re-attached</td>
+        </tr>
+        <tr>
+          <td>After scaling (y)</td>
+          <td><code>[N_split, 1]</code></td>
+          <td><code>pl.DataFrame</code></td>
+          <td>Target only</td>
+        </tr>
+        <tr>
+          <td><strong>create_sequences X</strong></td>
+          <td><code>[N_seqs, 72, n_features]</code></td>
+          <td><code>np.ndarray</code></td>
+          <td>72-step lookback window per site</td>
+        </tr>
+        <tr>
+          <td><strong>create_sequences y</strong></td>
+          <td><code>[N_seqs]</code></td>
+          <td><code>np.ndarray</code></td>
+          <td>Scalar label at final step of each window</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── FILE MAP ── -->
+  <div class="section">
+    <h2>File Reference</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>File</th>
+          <th>Key Symbols</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>src/utils/helpers.py</code></td>
+          <td><code>pull_duckdb</code>, <code>pull_wandb</code>, <code>create_sequences</code></td>
+        </tr>
+        <tr>
+          <td><code>src/preprocessing/preprocessing.py</code></td>
+          <td><code>processor</code>, <code>TorchStandardScaler</code>, <code>train_val_test_split_by_time</code></td>
+        </tr>
+        <tr>
+          <td><code>src/preprocessing/gnn_preprocessing.py</code></td>
+          <td><code>gnn_processor</code> (extends <code>processor</code> for graph edges)</td>
+        </tr>
+        <tr>
+          <td><code>notebooks/model_exploration/lstm/running_lstm_2xloss.ipynb</code></td>
+          <td>Notebook entrypoint, <code>WINDOW_SIZE = 72</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>Flood Forecasting · Missouri River Basin (HUC 10) · Generated April 2026</footer>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "dark",
+      themeVariables: {
+        primaryColor: "#1e3a5f",
+        primaryTextColor: "#e2e8f0",
+        primaryBorderColor: "#4f8ef7",
+        lineColor: "#4f8ef7",
+        secondaryColor: "#2e1065",
+        tertiaryColor: "#064e3b",
+        background: "#0f1117",
+        mainBkg: "#1a1d27",
+        nodeBorder: "#2d3148",
+        clusterBkg: "#13162200",
+        titleColor: "#e2e8f0",
+        edgeLabelBackground: "#1a1d27",
+        fontFamily: "Inter, -apple-system, sans-serif",
+        fontSize: "14px"
+      },
+      flowchart: {
+        htmlLabels: false,
+        curve: "basis",
+        padding: 20
+      }
+    });
+  </script>
+</body>
+</html>

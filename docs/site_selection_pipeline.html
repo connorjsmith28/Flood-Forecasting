@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Flood Forecasting — Site Selection Pipeline</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2d3148;
+      --accent: #4f8ef7;
+      --accent2: #7c5cbf;
+      --text: #e2e8f0;
+      --muted: #8892a4;
+      --green: #34d399;
+      --yellow: #fbbf24;
+      --red: #f87171;
+      --orange: #fb923c;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 2rem;
+      line-height: 1.6;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.25rem; color: #fff; }
+    .subtitle { color: var(--muted); font-size: 0.9rem; margin-bottom: 2.5rem; }
+
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem 2rem;
+      margin-bottom: 2rem;
+    }
+
+    .section h2 {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 1.25rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .mermaid {
+      display: flex;
+      justify-content: center;
+      overflow-x: auto;
+    }
+
+    /* ── Tables ── */
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    thead tr { background: #22263a; }
+    th {
+      text-align: left; padding: 0.6rem 1rem;
+      color: var(--accent); font-weight: 600; font-size: 0.78rem;
+      text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    td { padding: 0.55rem 1rem; border-top: 1px solid var(--border); vertical-align: top; }
+    tr:hover td { background: #1e2235; }
+    td code, th code {
+      background: #0f1117; border: 1px solid var(--border);
+      border-radius: 4px; padding: 0.1em 0.4em;
+      font-family: "JetBrains Mono", "Fira Code", monospace;
+      font-size: 0.82em; color: var(--green);
+    }
+
+    /* ── Stage cards ── */
+    .stages { display: flex; flex-direction: column; gap: 0; }
+
+    .stage {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      border: 1px solid var(--border);
+      border-radius: 0;
+      overflow: hidden;
+    }
+    .stage:first-child  { border-radius: 8px 8px 0 0; }
+    .stage:last-child   { border-radius: 0 0 8px 8px; }
+    .stage + .stage     { border-top: none; }
+
+    .stage-label {
+      background: #13162280;
+      border-right: 1px solid var(--border);
+      padding: 1.1rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      gap: 0.35rem;
+    }
+    .stage-num {
+      font-size: 0.68rem; font-weight: 700;
+      color: var(--accent2); text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .stage-title {
+      font-size: 0.95rem; font-weight: 600; color: #fff;
+      line-height: 1.3;
+    }
+    .stage-file {
+      font-size: 0.72rem; color: var(--accent);
+      font-family: "JetBrains Mono", "Fira Code", monospace;
+      margin-top: 0.15rem;
+    }
+
+    .stage-body {
+      padding: 1rem 1.25rem;
+      font-size: 0.855rem;
+      color: var(--muted);
+    }
+    .stage-body p { margin-bottom: 0.5rem; }
+    .stage-body p:last-child { margin-bottom: 0; }
+    .stage-body pre {
+      background: #0a0c14; border: 1px solid var(--border);
+      border-radius: 6px; padding: 0.65rem 0.9rem;
+      font-size: 0.77rem; color: #a0c4ff;
+      font-family: "JetBrains Mono", "Fira Code", monospace;
+      white-space: pre-wrap; line-height: 1.55;
+      margin-top: 0.6rem;
+    }
+    .stage-body .output-tag {
+      display: inline-block; margin-top: 0.6rem;
+      font-size: 0.73rem; font-weight: 600;
+      padding: 0.15em 0.55em; border-radius: 4px;
+      background: #0f2a17; color: var(--green);
+      border: 1px solid #14532d;
+    }
+    .stage-body .input-tag {
+      display: inline-block; margin-top: 0.4rem;
+      font-size: 0.73rem; font-weight: 600;
+      padding: 0.15em 0.55em; border-radius: 4px;
+      background: #1e1a35; color: #c4b5fd;
+      border: 1px solid #4c1d95;
+    }
+
+    /* ── Tag pills ── */
+    .tag {
+      display: inline-block; font-size: 0.72rem;
+      padding: 0.1em 0.5em; border-radius: 999px;
+      font-weight: 600; margin-right: 0.3rem; margin-top: 0.3rem;
+    }
+    .tag-green  { background: #064e3b; color: var(--green); }
+    .tag-yellow { background: #451a03; color: var(--yellow); }
+    .tag-blue   { background: #1e3a5f; color: #93c5fd; }
+    .tag-purple { background: #2e1065; color: #c4b5fd; }
+    .tag-red    { background: #450a0a; color: var(--red); }
+
+    /* ── Formula box ── */
+    .formula-box {
+      background: #0a0c14; border: 1px solid var(--border);
+      border-radius: 8px; padding: 1.25rem 1.5rem;
+      font-family: "JetBrains Mono", "Fira Code", monospace;
+      font-size: 0.82rem; color: #c4b5fd;
+      line-height: 2;
+    }
+    .formula-box .comment { color: var(--muted); font-style: italic; }
+    .formula-box .highlight { color: var(--yellow); font-weight: 700; }
+
+    /* ── Two-column layout ── */
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+
+    /* ── Filter criteria ── */
+    .filter-criteria {
+      display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.5rem;
+    }
+    .criterion {
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 0.75rem 1rem; background: #13162280;
+    }
+    .criterion .crit-title { font-size: 0.88rem; font-weight: 600; color: #fff; margin-bottom: 0.25rem; }
+    .criterion .crit-desc  { font-size: 0.82rem; color: var(--muted); }
+    .criterion code {
+      background: #0f1117; border: 1px solid var(--border);
+      border-radius: 3px; padding: 0.08em 0.35em;
+      font-family: "JetBrains Mono", monospace; font-size: 0.8em; color: var(--green);
+    }
+
+    footer {
+      text-align: center; color: var(--muted); font-size: 0.78rem;
+      margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--border);
+    }
+
+    @media (max-width: 900px) {
+      .stage { grid-template-columns: 1fr; }
+      .stage-label { border-right: none; border-bottom: 1px solid var(--border); }
+      .two-col { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Flood Forecasting — Site Selection Pipeline</h1>
+  <p class="subtitle">Missouri River Basin (HUC 10) · From raw USGS discovery to the LP3-filtered site set</p>
+
+  <!-- ── OVERVIEW FLOWCHART ── -->
+  <div class="section">
+    <h2>End-to-End Overview</h2>
+    <div class="mermaid">
+flowchart LR
+    A["🌊 USGS NWIS\nHUC 10 · discharge sites\nparameterCd=00060/00065"]
+
+    A -->|"Dagster: extraction_job"| B
+
+    subgraph B ["Raw Layer  raw.*"]
+      direction TB
+      B1["raw.site_metadata\n~HUC-10 sites\nhas_iv / has_daily flags"]
+      B2["raw.streamflow_15min\nIV data  ~25 % of sites"]
+      B3["raw.streamflow_daily\nDV data  ~75 % of sites"]
+      B4["raw.nldas3_forcing\nhourly weather per site\n13 variables"]
+    end
+
+    B -->|"Dagster: dbt_flood_forecasting\njust transform"| C
+
+    subgraph C ["dbt Transformation"]
+      direction TB
+      C1["staging/\nstg_site_metadata\nstg_streamflow\nstg_nldas3_weather\n+ 25+ GAGES-II seeds"]
+      C2["marts/\nfct_streamflow_hourly\ndim_catchment_attributes\n+ lp3_filtered_sites"]
+      C3["final/\nflood_model  hourly  ~350 cols\nflood_model_daily\nflood_model_daily_summary"]
+    end
+
+    C -->|"Dagster: wandb_sync_job"| D
+
+    D["W&B Artifacts\nflood-dataset:latest\nflood-dataset-daily:latest\nflood-dataset-daily-summary:latest"]
+
+    D -->|"LP3 Analysis Notebook\nLog_Pearson3_Flooding.ipynb"| E
+
+    E["lp3_results.csv  seed\nQ2/Q5/Q10/Q25/Q50/Q100 thresholds\nflood_severity_score per site"]
+
+    E -->|"top_30_filtering.ipynb\nfilter: score ≥ 1.25"| F
+
+    F["✅ Final Site Set\nHigh flood-activity sites\nflood_severity_score ≥ 1.25"]
+
+    style A fill:#1e3a5f,stroke:#4f8ef7,color:#e2e8f0
+    style D fill:#2e1065,stroke:#7c5cbf,color:#e2e8f0
+    style E fill:#451a03,stroke:#fbbf24,color:#e2e8f0
+    style F fill:#064e3b,stroke:#34d399,color:#e2e8f0
+    </div>
+  </div>
+
+  <!-- ── STEP-BY-STEP STAGES ── -->
+  <div class="section">
+    <h2>Pipeline Stages</h2>
+    <div class="stages">
+
+      <!-- STAGE 1 -->
+      <div class="stage">
+        <div class="stage-label">
+          <div class="stage-num">Stage 1</div>
+          <div class="stage-title">USGS Site Discovery</div>
+          <div class="stage-file">Dagster · extraction_job</div>
+          <div class="stage-file">src/elt/extraction/usgs.py</div>
+        </div>
+        <div class="stage-body">
+          <p>Queries USGS NWIS for all streamflow/discharge sites within the Missouri River Basin (HUC 10). Three API calls determine data availability:</p>
+          <pre>nwis.what_sites(huc="10", parameterCd="00060")   # all sites
+nwis.get_info(sites=[...])                         # per-site detail
+→ has_iv   = site has instantaneous (15-min) values
+→ has_daily = site has daily mean values</pre>
+          <p>All sites are stored with no further filtering at this stage.</p>
+          <span class="output-tag">raw.site_metadata</span>
+          <span class="tag tag-blue">~HUC-10 sites</span>
+          <span class="tag tag-blue">site_id · lat/lon · drainage_area_sq_mi · state_code · has_iv · has_daily</span>
+        </div>
+      </div>
+
+      <!-- STAGE 2 -->
+      <div class="stage">
+        <div class="stage-label">
+          <div class="stage-num">Stage 2</div>
+          <div class="stage-title">Streamflow &amp; Weather Extraction</div>
+          <div class="stage-file">Dagster · extraction_job</div>
+          <div class="stage-file">src/elt/extraction/usgs.py<br/>src/elt/extraction/nldas3.py</div>
+        </div>
+        <div class="stage-body">
+          <p><strong style="color:#e2e8f0">Streamflow (USGS):</strong> Batches of 20 sites, 365-day windows, 5 parallel workers. Incremental — only fetches after the last stored timestamp.</p>
+          <pre>IV  → raw.streamflow_15min   (site_id, datetime, streamflow_cfs, gage_height_ft, qualifiers)
+DV  → raw.streamflow_daily    (site_id, date,     streamflow_cfs_mean, gage_height_ft_mean)</pre>
+          <p><strong style="color:#e2e8f0">Weather (NLDAS-2):</strong> Maps each site to its nearest 0.125° grid cell, downloads hourly NetCDF from NASA GES DISC, area-weighted average per site.</p>
+          <pre>raw.nldas3_forcing  →  air_temp_c, specific_humidity_kgkg, surface_pressure_pa,
+                        wind_u/v_ms, shortwave_radiation_wm2, longwave_radiation_wm2,
+                        precipitation_mm, convective_precip_fraction, cape_jkg,
+                        potential_evaporation_mm</pre>
+          <span class="output-tag">raw.streamflow_15min</span>
+          <span class="output-tag">raw.streamflow_daily</span>
+          <span class="output-tag">raw.nldas3_forcing</span>
+        </div>
+      </div>
+
+      <!-- STAGE 3 -->
+      <div class="stage">
+        <div class="stage-label">
+          <div class="stage-num">Stage 3</div>
+          <div class="stage-title">dbt Staging Layer</div>
+          <div class="stage-file">Dagster · transformation_job</div>
+          <div class="stage-file">src/elt/transformation/models/staging/</div>
+        </div>
+        <div class="stage-body">
+          <p>Lightweight views that clean and rename raw tables. Seeds are loaded alongside staging models.</p>
+          <pre>stg_site_metadata       ← raw.site_metadata
+stg_streamflow          ← raw.streamflow_15min
+stg_streamflow_daily    ← raw.streamflow_daily
+stg_nldas3_weather      ← raw.nldas3_forcing
+
+Seeds loaded from CSV files:
+  seeds/attributes_gageii_*.csv      (25 GAGES-II attribute tables)
+  seeds/attributes_hydroATLAS.csv    (195+ HydroATLAS catchment vars)
+  seeds/attributes_nldas2_climate.csv
+  seeds/lp3_results.csv              (LP3 flood-frequency results)
+  seeds/filtered_site_ids.csv        (hand-curated site list)</pre>
+          <span class="output-tag">staging.* views</span>
+          <span class="output-tag">seeds.*</span>
+        </div>
+      </div>
+
+      <!-- STAGE 4 -->
+      <div class="stage">
+        <div class="stage-label">
+          <div class="stage-num">Stage 4</div>
+          <div class="stage-title">dbt Marts Layer</div>
+          <div class="stage-file">Dagster · transformation_job</div>
+          <div class="stage-file">src/elt/transformation/models/marts/</div>
+        </div>
+        <div class="stage-body">
+          <p>Business-logic models. Key tables:</p>
+          <pre>fct_streamflow_hourly
+  = stg_streamflow  (aggregated 15-min → hourly)
+    INNER JOIN dim_sites
+    INNER JOIN stg_nldas3_weather
+  → site_id, observation_hour, lat/lon
+     streamflow_cfs_{mean/max/min}, gage_height_ft_{mean/max/min}
+     + 10 weather variables
+
+dim_catchment_attributes
+  = JOIN: 25× stg_gagesii_* + stg_hydroatlas + stg_nldas_climate
+  → ~200+ static basin attributes per site
+    (geology, soils, land cover, hydrology, climate, dams…)
+
+fct_streamflow_daily    ← daily data + daily-aggregated weather
+
+lp3_filtered_sites
+  = seeds.lp3_results
+    WHERE flood_severity_score >= 1.25
+
+gauge_streamflow_availability
+  = stg_info + stg_gagesii_basin
+    WHERE huc02 IN ('10U', '10L')  -- Missouri Basin only</pre>
+          <span class="output-tag">marts.fct_streamflow_hourly</span>
+          <span class="output-tag">marts.dim_catchment_attributes</span>
+          <span class="output-tag">marts.fct_streamflow_daily</span>
+        </div>
+      </div>
+
+      <!-- STAGE 5 -->
+      <div class="stage">
+        <div class="stage-label">
+          <div class="stage-num">Stage 5</div>
+          <div class="stage-title">dbt Final Layer</div>
+          <div class="stage-file">Dagster · transformation_job</div>
+          <div class="stage-file">src/elt/transformation/models/final/</div>
+        </div>
+        <div class="stage-body">
+          <p>Denormalised ML-ready tables. Three primary outputs:</p>
+          <pre>final.flood_model         (primary training table, hourly)
+  = fct_streamflow_hourly
+    INNER JOIN dim_catchment_attributes ON site_id
+  → ~350+ columns: all weather + all static basin attributes
+    batched_table: 25 sites at a time to manage memory
+
+final.flood_model_daily   (same, for daily-only sites)
+  = fct_streamflow_daily + dim_catchment_attributes
+
+final.flood_model_daily_summary  ← used as LP3 input
+  = SELECT site_id, date, MAX(streamflow_cfs_max), MAX(gage_height_ft_max)
+    FROM flood_model GROUP BY site_id, date</pre>
+          <span class="output-tag">final.flood_model  ~350 cols</span>
+          <span class="output-tag">final.flood_model_daily</span>
+          <span class="output-tag">final.flood_model_daily_summary</span>
+        </div>
+      </div>
+
+      <!-- STAGE 6 -->
+      <div class="stage">
+        <div class="stage-label">
+          <div class="stage-num">Stage 6</div>
+          <div class="stage-title">W&amp;B Artifact Upload</div>
+          <div class="stage-file">Dagster · wandb_sync_job</div>
+          <div class="stage-file">data/dagster/orchestration/</div>
+        </div>
+        <div class="stage-body">
+          <p>After each dbt run, the sync asset exports DuckDB tables to Parquet and uploads to Weights &amp; Biases.</p>
+          <pre>1. Compute SHA-256 fingerprint of flood_model schema
+2. Fetch flood-dataset:latest from W&B API
+   → Not found?       full fresh export
+   → Schema changed?  full fresh export
+   → Otherwise        incremental merge
+      (download existing parquet, anti-join on [site_id, observation_hour],
+       concat local + old-only rows)
+3. COPY main.flood_model TO parquet (UTC timestamps)
+4. wandb.init(project="flood-forecasting", job_type="dataset-sync")
+5. wandb.Artifact(name="flood-dataset", type="dataset",
+                  metadata={fingerprint, schema, row_count, site_count, …})
+6. artifact.add_file(parquet) → run.log_artifact(aliases=["latest"])
+7. Delete old artifact versions, fire alert if schema changed</pre>
+          <span class="output-tag">flood-dataset:latest</span>
+          <span class="output-tag">flood-dataset-daily:latest</span>
+          <span class="output-tag">flood-dataset-daily-summary:latest</span>
+          <span class="tag tag-purple">incremental merge</span>
+          <span class="tag tag-purple">schema fingerprint check</span>
+        </div>
+      </div>
+
+      <!-- STAGE 7 -->
+      <div class="stage">
+        <div class="stage-label">
+          <div class="stage-num">Stage 7</div>
+          <div class="stage-title">LP3 Flood-Frequency Analysis</div>
+          <div class="stage-file">Log_Pearson3_Flooding.ipynb</div>
+          <div class="stage-file">notebooks/data_exploration/</div>
+        </div>
+        <div class="stage-body">
+          <p>Offline notebook consuming <code>flood-dataset-daily-summary:latest</code>. Uses Bulletin 17C methodology to fit per-site flood-frequency distributions.</p>
+          <pre>1. Load flood-dataset-daily-summary:latest from W&B
+2. Extract annual peak flows (water year Oct–Sep) per site
+3. Keep sites with ≥ 10 years of record
+4. For each qualifying site:
+   a. log₁₀-transform peaks → compute mean_log, std_log
+   b. Station skew G  (Griffis & Stedinger 2009 unbiased estimator)
+   c. Regional skew (state-specific:  NE/SD/ND → −0.30,
+                                      KS/IA   → −0.20,
+                                      CO/WY/MT → −0.10, …)
+   d. Weighted skew Gw = MSE-weighted blend of station + regional
+   e. Multiple Grubbs-Beck test → identify & remove PILFs
+   f. Fit Pearson Type III via scipy.stats.pearson3.ppf
+   g. Compute return-period quantiles Q2/Q5/Q10/Q25/Q50/Q100
+   h. Count historical peaks exceeding each threshold
+5. Save lp3_results.csv → commit as dbt seed</pre>
+          <span class="output-tag">lp3_results.csv  (dbt seed)</span>
+          <span class="tag tag-yellow">Q2 · Q5 · Q10 · Q25 · Q50 · Q100</span>
+          <span class="tag tag-yellow">flood_severity_score per site</span>
+        </div>
+      </div>
+
+      <!-- STAGE 8 -->
+      <div class="stage">
+        <div class="stage-label">
+          <div class="stage-num">Stage 8</div>
+          <div class="stage-title">Site Filtering</div>
+          <div class="stage-file">top_30_filtering.ipynb</div>
+          <div class="stage-file">notebooks/data_exploration/</div>
+        </div>
+        <div class="stage-body">
+          <p>Loads the LP3 seed and applies quality filters to arrive at the final high-flood-activity site set.</p>
+          <pre>lp3_df = pl.read_csv('lp3_results.csv')
+lp3_sites = lp3_df
+  .filter(pl.col("flood_severity_score") >= 1.25)
+  ["site_id"].to_list()
+
+Then in the notebook:
+  df = pull from flood-dataset:latest
+     .filter(site_id IN lp3_sites)
+     .filter(observation_hour <= "2024-08-01")
+
+Quality checks applied:
+  • streamflow_cfs_mean < 0  → set to null
+  • streamflow_null_pct       →  visualise distribution
+  • gage_height_null_pct      →  visualise distribution</pre>
+          <span class="output-tag">final site DataFrame</span>
+          <span class="tag tag-green">flood_severity_score ≥ 1.25</span>
+          <span class="tag tag-green">cutoff: 2024-08-01</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── LP3 FORMULA ── -->
+  <div class="section">
+    <h2>flood_severity_score — Formula Detail</h2>
+    <div class="two-col">
+      <div>
+        <p style="font-size:0.87rem; color:var(--muted); margin-bottom:1rem;">
+          Each site's flood record is scored by weighting historical floods by return period severity,
+          then normalising by record length. Higher return-period floods receive a larger weight via <em>√T</em>.
+        </p>
+        <div class="formula-box">
+          <span class="comment"># Isolate floods in each tier (between return periods)</span><br/>
+          count_Q100 = floods &gt; Q100<br/>
+          count_Q50  = floods &gt; Q50  − count_Q100<br/>
+          count_Q25  = floods &gt; Q25  − count_Q50 − count_Q100<br/>
+          ...<br/>
+          count_Q2   = floods &gt; Q2   − (all higher tiers)<br/><br/>
+          <span class="comment"># Weighted sum  (√T weights: √100=10.0, √50≈7.1, √25=5.0, √10≈3.2, √5≈2.2, √2≈1.4)</span><br/>
+          weighted = Σ count_QT × <span class="highlight">√T</span><br/><br/>
+          <span class="comment"># Normalise by years of record</span><br/>
+          <span class="highlight">flood_severity_score = weighted / n_years</span><br/><br/>
+          <span class="comment"># Filter threshold used in lp3_filtered_sites mart</span><br/>
+          WHERE flood_severity_score <span class="highlight">&gt;= 1.25</span>
+        </div>
+      </div>
+      <div>
+        <p style="font-size:0.87rem; color:var(--muted); margin-bottom:1rem;">Columns produced in <code>lp3_results.csv</code>:</p>
+        <table>
+          <thead><tr><th>Column</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>site_id</code></td><td>USGS gauge ID</td></tr>
+            <tr><td><code>n_years</code></td><td>Years of record used</td></tr>
+            <tr><td><code>mean_log</code> / <code>std_log</code></td><td>Log₁₀ flow statistics</td></tr>
+            <tr><td><code>station_skew</code></td><td>Unbiased site skew (B17C)</td></tr>
+            <tr><td><code>regional_skew</code></td><td>State-specific regional skew</td></tr>
+            <tr><td><code>weighted_skew</code></td><td>MSE-blended final skew</td></tr>
+            <tr><td><code>pilf_threshold_cfs</code></td><td>MGB low-flow censoring threshold</td></tr>
+            <tr><td><code>n_pilfs</code> / <code>n_retained</code></td><td>Peaks removed / kept</td></tr>
+            <tr><td><code>Q2_cfs</code> … <code>Q100_cfs</code></td><td>Return-period quantiles (cfs)</td></tr>
+            <tr><td><code>floods_Q2</code> … <code>floods_Q100</code></td><td>Historical exceedance counts</td></tr>
+            <tr><td><code>flood_severity_score</code></td><td><strong>Primary filter column</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── FILTERS APPLIED ── -->
+  <div class="section">
+    <h2>Filtering Criteria Summary</h2>
+    <div class="filter-criteria">
+      <div class="criterion">
+        <div class="crit-title">1 — HUC 10 Geographic Scope</div>
+        <div class="crit-desc">Applied at extraction time via <code>SiteConfig(huc="10")</code>. Only Missouri River Basin sites are ever ingested. No downstream re-filtering needed.</div>
+      </div>
+      <div class="criterion">
+        <div class="crit-title">2 — Minimum Record Length for LP3 Fitting</div>
+        <div class="crit-desc">Sites must have <code>n_years ≥ 10</code> of annual peak flow data for a statistically meaningful LP3 distribution to be fitted.</div>
+      </div>
+      <div class="criterion">
+        <div class="crit-title">3 — LP3 Flood Severity Score ≥ 1.25</div>
+        <div class="crit-desc">Sites are ranked by <code>flood_severity_score</code> (return-period-weighted flood activity rate). Threshold ≥ 1.25 retains sites with meaningful flood signals. Applied in <code>marts.lp3_filtered_sites</code> and in <code>top_30_filtering.ipynb</code>.</div>
+      </div>
+      <div class="criterion">
+        <div class="crit-title">4 — Date Cutoff</div>
+        <div class="crit-desc">Data is loaded only up to <code>observation_hour ≤ 2024-08-01</code> to prevent using partial or provisional data near the present.</div>
+      </div>
+      <div class="criterion">
+        <div class="crit-title">5 — Streamflow Quality Cleaning</div>
+        <div class="crit-desc">Negative streamflow values (<code>streamflow_cfs_mean &lt; 0</code>) are set to <code>null</code> — these represent sensor errors or backwater conditions. Null-rate distributions are inspected visually.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── DAGSTER JOBS ── -->
+  <div class="section">
+    <h2>Dagster Job Reference</h2>
+    <table>
+      <thead>
+        <tr><th>Job</th><th>Assets Run</th><th>Command</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>extraction_job</code></td>
+          <td>usgs_site_metadata, usgs_streamflow_15min, usgs_streamflow_daily, nldas3_watershed_mapping, nldas3_forcing_raw</td>
+          <td><code>just extract</code></td>
+        </tr>
+        <tr>
+          <td><code>transformation_job</code></td>
+          <td>dbt_flood_forecasting (seeds + staging + marts + final)</td>
+          <td><code>just transform</code></td>
+        </tr>
+        <tr>
+          <td><code>wandb_sync_job</code></td>
+          <td>wandb_dataset, wandb_dataset_daily, wandb_dataset_daily_summary, wandb_raw_tables</td>
+          <td>Dagster UI or schedule</td>
+        </tr>
+        <tr>
+          <td><code>full_pipeline_job</code></td>
+          <td>extraction + transformation</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><code>sync_job</code></td>
+          <td>extraction + transformation + sync</td>
+          <td>—</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── DATA LINEAGE TABLE ── -->
+  <div class="section">
+    <h2>Data Lineage at Each Layer</h2>
+    <table>
+      <thead>
+        <tr><th>Layer</th><th>Table / Artifact</th><th>Key Columns</th><th>Rows</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="tag tag-blue">raw</span></td>
+          <td><code>raw.site_metadata</code></td>
+          <td>site_id · lat/lon · huc_code · drainage_area_sq_mi · has_iv · has_daily</td>
+          <td>1 row/site</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-blue">raw</span></td>
+          <td><code>raw.streamflow_15min</code></td>
+          <td>site_id · datetime · streamflow_cfs · gage_height_ft · qualifiers</td>
+          <td>15-min intervals</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-blue">raw</span></td>
+          <td><code>raw.streamflow_daily</code></td>
+          <td>site_id · date · streamflow_cfs_mean · gage_height_ft_mean</td>
+          <td>1 row/site/day</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-blue">raw</span></td>
+          <td><code>raw.nldas3_forcing</code></td>
+          <td>site_id · datetime · 13 weather vars</td>
+          <td>1 row/site/hour</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-purple">marts</span></td>
+          <td><code>fct_streamflow_hourly</code></td>
+          <td>site_id · observation_hour · streamflow_{mean/max/min} · gage_height_{mean/max/min} · 10 weather vars</td>
+          <td>1 row/site/hour</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-purple">marts</span></td>
+          <td><code>dim_catchment_attributes</code></td>
+          <td>site_id + ~200 static basin vars (GAGES-II + HydroATLAS + NLDAS climate)</td>
+          <td>1 row/site</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-green">final</span></td>
+          <td><code>flood_model</code></td>
+          <td>All fct_streamflow_hourly cols + all dim_catchment_attributes cols</td>
+          <td>~350+ cols · 1 row/site/hour</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-green">final</span></td>
+          <td><code>flood_model_daily_summary</code></td>
+          <td>site_id · observed_date · streamflow_cfs_max · gage_height_ft_max</td>
+          <td>LP3 input</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-yellow">wandb</span></td>
+          <td><code>flood-dataset:latest</code></td>
+          <td>flood_model exported as Parquet</td>
+          <td>same as flood_model</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-yellow">analysis</span></td>
+          <td><code>lp3_results.csv</code></td>
+          <td>site_id · Q-return-period thresholds · flood_severity_score</td>
+          <td>1 row/qualifying site</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-green">filtered</span></td>
+          <td><code>Final site set</code></td>
+          <td>flood-dataset:latest filtered to flood_severity_score ≥ 1.25</td>
+          <td>High flood-activity sites only</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer>Flood Forecasting · Missouri River Basin (HUC 10) · Generated April 2026</footer>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: "dark",
+      themeVariables: {
+        primaryColor: "#1e3a5f",
+        primaryTextColor: "#e2e8f0",
+        primaryBorderColor: "#4f8ef7",
+        lineColor: "#4f8ef7",
+        secondaryColor: "#2e1065",
+        tertiaryColor: "#064e3b",
+        background: "#0f1117",
+        mainBkg: "#1a1d27",
+        nodeBorder: "#2d3148",
+        titleColor: "#e2e8f0",
+        edgeLabelBackground: "#1a1d27",
+        fontFamily: "Inter, -apple-system, sans-serif",
+        fontSize: "13px"
+      },
+      flowchart: { htmlLabels: false, curve: "basis", padding: 20 }
+    });
+  </script>
+</body>
+</html>
