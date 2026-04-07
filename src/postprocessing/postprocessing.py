@@ -204,18 +204,22 @@ class PostProcessor:
         sample_index: int = 0,
         max_explain_samples: int = 300,
         nsamples: int = 200,
+        exclude_features: list[str] | None = None,
     ) -> None:
         """Compute SHAP values via KernelSHAP and produce three plots:
-          1. Beeswarm     — global feature importance (mean over timesteps)
-          2. Waterfall    — single prediction breakdown
-          3. Temporal heatmap — mean |SHAP| by timestep × feature
+        1. Beeswarm     — global feature importance (mean over timesteps)
+        2. Waterfall    — single prediction breakdown
+        3. Temporal heatmap — mean |SHAP| by timestep × feature
 
         Args:
             background_size:     Number of background samples for the explainer.
             sample_index:        Which test sample to use for the waterfall plot.
             max_explain_samples: Cap on samples passed to SHAP (performance guard).
             nsamples:            KernelSHAP estimation budget per sample.
-                                 50 for quick exploration, 200 default, 500 for report.
+                                50 for quick exploration, 200 default, 500 for report.
+            exclude_features:    Optional list of feature names to exclude from plots.
+                                Features are still used by the model — only hidden
+                                from visualizations.
         """
         X = self.X_test.copy()
 
@@ -241,19 +245,39 @@ class PostProcessor:
         shap_values = shap_flat.reshape(n_samples, timesteps, n_features)
         print("Done.")
 
+        # ── Apply feature exclusion filter ────────────────────────────────
+        if exclude_features:
+            keep_idx = [
+                i for i, name in enumerate(self.feature_names)
+                if name not in exclude_features
+            ]
+            plot_names = [self.feature_names[i] for i in keep_idx]
+            shap_values_plot = shap_values[:, :, keep_idx]
+            X_plot = X[:, :, keep_idx]
+            excluded_str = ", ".join(exclude_features)
+            print(f"Excluding from plots: {excluded_str}")
+        else:
+            keep_idx = list(range(n_features))
+            plot_names = self.feature_names
+            shap_values_plot = shap_values
+            X_plot = X
+
         # Collapse time axis for beeswarm and waterfall
-        shap_2d = shap_values.mean(axis=1)  # (n_samples, n_features)
-        X_2d    = X.mean(axis=1)            # (n_samples, n_features)
+        shap_2d = shap_values_plot.mean(axis=1)  # (n_samples, n_plot_features)
+        X_2d    = X_plot.mean(axis=1)            # (n_samples, n_plot_features)
 
         # 1. Beeswarm
         shap_exp = shap.Explanation(
             values=shap_2d,
             data=X_2d,
-            feature_names=self.feature_names,
+            feature_names=plot_names,
         )
         plt.figure()
         shap.plots.beeswarm(shap_exp, show=False)
-        plt.title("SHAP — Global Feature Importance (mean over timesteps)")
+        title = "SHAP — Global Feature Importance (mean over timesteps)"
+        if exclude_features:
+            title += "\n(streamflow features excluded)"
+        plt.title(title)
         plt.tight_layout()
         plt.savefig("shap_beeswarm.png", dpi=150)
         plt.show()
@@ -267,7 +291,7 @@ class PostProcessor:
             values=shap_2d[sample_index],
             base_values=float(base_val),
             data=X_2d[sample_index],
-            feature_names=self.feature_names,
+            feature_names=plot_names,
         )
         plt.figure()
         shap.plots.waterfall(single_exp, show=False)
@@ -277,21 +301,135 @@ class PostProcessor:
         plt.show()
 
         # 3. Temporal heatmap
-        mean_abs = np.abs(shap_values).mean(axis=0)  # (timesteps, n_features)
+        mean_abs = np.abs(shap_values_plot).mean(axis=0)  # (timesteps, n_plot_features)
 
-        fig, ax = plt.subplots(figsize=(max(8, len(self.feature_names) * 0.7), 5))
+        fig, ax = plt.subplots(figsize=(max(8, len(plot_names) * 0.7), 5))
         im = ax.imshow(mean_abs.T, aspect="auto", cmap="YlOrRd")
         ax.set_xticks(range(timesteps))
         ax.set_xticklabels(
             [f"t-{timesteps - i}" for i in range(timesteps)],
             rotation=45, ha="right",
         )
-        ax.set_yticks(range(len(self.feature_names)))
-        ax.set_yticklabels(self.feature_names)
+        ax.set_yticks(range(len(plot_names)))
+        ax.set_yticklabels(plot_names)
         ax.set_xlabel("Timestep (lag)")
         ax.set_ylabel("Feature")
         ax.set_title("SHAP — Mean |SHAP| by Timestep × Feature")
         plt.colorbar(im, ax=ax, label="Mean |SHAP|")
         plt.tight_layout()
         plt.savefig("shap_temporal_heatmap.png", dpi=150)
+        plt.show()
+    
+    def compute_shap_per_site(
+        self,
+        background_size: int = 100,
+        max_explain_samples: int = 300,
+        nsamples: int = 200,
+        top_n: int = 5,
+        exclude_features: list[str] | None = None,
+    ) -> None:
+        """Compute SHAP values per site and produce:
+        1. Printed table of top N features per site
+        2. Heatmap comparing top feature importance across all sites
+
+        Args:
+            background_size:     Number of background samples for KernelSHAP.
+            max_explain_samples: Max samples per site passed to SHAP.
+            nsamples:            KernelSHAP estimation budget per sample.
+            top_n:               Number of top features to show per site.
+            exclude_features:    Optional list of feature names to exclude from
+                                plots and tables. Features still used by model.
+        """
+        import warnings
+        from sklearn.exceptions import ConvergenceWarning
+        warnings.filterwarnings("ignore", category=ConvergenceWarning)
+        warnings.filterwarnings("ignore", message="Linear regression equation is singular")
+
+        X = self.X_test
+        n_samples, timesteps, n_features = X.shape
+
+        # ── Feature filter setup ──────────────────────────────────────────
+        if exclude_features:
+            keep_idx = [
+                i for i, name in enumerate(self.feature_names)
+                if name not in exclude_features
+            ]
+            plot_names = [self.feature_names[i] for i in keep_idx]
+            print(f"Excluding from plots: {', '.join(exclude_features)}")
+        else:
+            keep_idx = list(range(n_features))
+            plot_names = self.feature_names
+
+        # Background from full test set
+        background = X[:background_size]
+        flat_background = background.reshape(background_size, -1)
+
+        def model_predict_flat(x_flat):
+            return self.model.predict(
+                x_flat.reshape(-1, timesteps, n_features), verbose=0
+            ).flatten()
+
+        explainer = shap.KernelExplainer(model_predict_flat, flat_background)
+
+        sites = np.unique(self.site_ids)
+        site_importance: dict[str, np.ndarray] = {}
+
+        for site in sites:
+            mask = self.site_ids == site
+            X_site = X[mask]
+
+            if len(X_site) == 0:
+                continue
+
+            if len(X_site) > max_explain_samples:
+                idx = np.random.choice(len(X_site), size=max_explain_samples, replace=False)
+                X_site = X_site[idx]
+
+            n_site = len(X_site)
+            flat_X_site = X_site.reshape(n_site, -1)
+
+            print(f"Computing SHAP for site {site} ({n_site} samples)...")
+            shap_flat = explainer.shap_values(flat_X_site, nsamples=nsamples, silent=True)
+            shap_values = shap_flat.reshape(n_site, timesteps, n_features)
+
+            # Apply exclusion filter before computing importance
+            shap_filtered = shap_values[:, :, keep_idx]
+            mean_abs = np.abs(shap_filtered).mean(axis=(0, 1))  # define mean_abs first
+            mean_abs = np.where(mean_abs > 1e6, 0, mean_abs)    # then clip it
+            site_importance[site] = mean_abs
+
+            # ── Printed table ─────────────────────────────────────────────
+            top_idx = np.argsort(mean_abs)[::-1][:top_n]
+            print(f"\nSite {site} — Top {top_n} features:")
+            print(f"  {'Rank':<6} {'Feature':<35} {'Mean |SHAP|':>12}")
+            print(f"  {'-'*55}")
+            for rank, idx in enumerate(top_idx, 1):
+                val = mean_abs[idx]
+                val_str = f"{val:>12.5f}" if val < 1e6 else "  [unstable]"
+                print(f"  {rank:<6} {plot_names[idx]:<35} {val_str}")
+            print()
+
+        # ── Summary heatmap across all sites ──────────────────────────────
+        site_names = list(site_importance.keys())
+        importance_matrix = np.stack(
+            [site_importance[s] for s in site_names], axis=0
+        )  # (n_sites, n_plot_features)
+
+        fig, ax = plt.subplots(figsize=(max(10, len(plot_names) * 0.6), max(4, len(site_names) * 0.5)))
+        im = ax.imshow(importance_matrix, aspect="auto", cmap="YlOrRd")
+
+        ax.set_xticks(range(len(plot_names)))
+        ax.set_xticklabels(plot_names, rotation=45, ha="right", fontsize=8)
+        ax.set_yticks(range(len(site_names)))
+        ax.set_yticklabels(site_names, fontsize=8)
+        ax.set_xlabel("Feature")
+        ax.set_ylabel("Site")
+        title = "SHAP — Mean |SHAP| by Site × Feature"
+        if exclude_features:
+            title += "\n(some features excluded)"
+        ax.set_title(title)
+
+        plt.colorbar(im, ax=ax, label="Mean |SHAP|")
+        plt.tight_layout()
+        plt.savefig("shap_per_site.png", dpi=150)
         plt.show()
