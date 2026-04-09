@@ -1,30 +1,33 @@
-"""hybrid flood forecasting model."""
+"""Hybrid LSTM-Transformer flood forecasting model."""
 
 import tensorflow as tf
-from tensorflow.keras.layers import LSTM, Dense, Dropout
-from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Dropout, GlobalAveragePooling1D
 from .transformer import TransformerBlock
 from src.models.base import BaseModel
 
 
 class LSTMTransformer(BaseModel):
-    """Two-layer LSTM with optional asymmetric MSE loss.
+    """LSTM encoder feeding a single Transformer block for flood forecasting.
 
     Args:
         lstm_units: Tuple of units for the two LSTM layers.
-        dense_units: Units in the hidden Dense layer before the output.
-        dropout_rate: Dropout fraction after each LSTM layer.
+        d_model: Transformer embedding dimension (projection target).
+        num_heads: Number of attention heads in the TransformerBlock.
+        ff_dim: Feed-forward hidden dim inside the TransformerBlock.
+        dense_units: Units in the hidden Dense layer before output.
+        dropout_rate: Dropout fraction used throughout.
         output_size: Number of output neurons (1 for single-site prediction).
-        under_predict_penalty: When > 1, under-predictions are penalised
-            more heavily (asymmetric MSE). Set to 1.0 for standard MSE.
+        under_predict_penalty: Asymmetric MSE weight (1.0 = standard MSE).
         learning_rate: Adam learning rate.
     """
 
     def __init__(
         self,
-        lstm_units: tuple[int, int] = (32, 16),
-        transformer_units: tuple[int, int] = (32, 16),
-        dense_units: int = 64,
+        lstm_units: tuple[int, int] = (64, 32),
+        d_model: int = 32,
+        num_heads: int = 2,
+        ff_dim: int = 32,
+        dense_units: int = 32,
         dropout_rate: float = 0.3,
         output_size: int = 1,
         under_predict_penalty: float = 2.0,
@@ -32,56 +35,51 @@ class LSTMTransformer(BaseModel):
     ) -> None:
         super().__init__(under_predict_penalty=under_predict_penalty, learning_rate=learning_rate)
         self.lstm_units = lstm_units
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.ff_dim = ff_dim
         self.dense_units = dense_units
         self.dropout_rate = dropout_rate
         self.output_size = output_size
-        self.transformer_units = transformer_units
 
     def build(self, input_shape: tuple[int, ...] | None = None) -> tf.keras.Model:
-        """Build and compile the LSTM model.
+        """Build and compile the hybrid model.
 
         Args:
             input_shape: Optional ``(window_size, n_features)`` tuple.
-                         If omitted the first layer defers shape inference.
         """
+        inputs = tf.keras.Input(shape=input_shape)
 
-        layers = []
+        x = LSTM(
+            self.lstm_units[0],
+            return_sequences=True,
+            dropout=self.dropout_rate,
+            recurrent_dropout=0.1,
+        )(inputs)
 
-        # First LSTM layer (returns sequences for transformer input)
-        if input_shape is not None:
-            layers.append(LSTM(self.lstm_units[0], return_sequences=True, input_shape=input_shape))
-        else:
-            layers.append(LSTM(self.lstm_units[0], return_sequences=True))
-        layers.append(Dropout(self.dropout_rate))
+        x = LSTM(
+            self.lstm_units[1],
+            return_sequences=True,  # keep sequences for transformer
+            dropout=self.dropout_rate,
+            recurrent_dropout=0.1,
+        )(x)
 
+        x = Dense(self.d_model)(x)
 
-        # Second LSTM layer (returns sequences for transformer input)
-        layers.append(LSTM(self.lstm_units[1], return_sequences=True))
-        layers.append(Dropout(self.dropout_rate))
+        x = TransformerBlock(
+            d_model=self.d_model,
+            num_heads=self.num_heads,
+            ff_dim=self.ff_dim,
+            dropout=self.dropout_rate,
+        )(x, training=None) 
 
-        # Project to transformer d_model dimension
-        layers.append(Dense(self.transformer_units[0]))
+        x = GlobalAveragePooling1D()(x)
 
-        # Add two TransformerBlock layers
-        for _ in range(2):
-            layers.append(
-                TransformerBlock(
-                    d_model=self.transformer_units[0],
-                    num_heads=2,
-                    ff_dim=self.transformer_units[1],
-                    dropout=self.dropout_rate,
-                )
-            )
+        x = Dense(self.dense_units, activation="relu")(x)
+        x = Dropout(self.dropout_rate)(x)
+        outputs = Dense(self.output_size)(x)
 
-        # Pooling to flatten sequence for dense layers
-        from tensorflow.keras.layers import GlobalAveragePooling1D
-        layers.append(GlobalAveragePooling1D())
-
-        # Dense layers
-        layers.append(Dense(self.dense_units))
-        layers.append(Dense(self.output_size))
-
-        self.model = Sequential(layers)
+        self.model = tf.keras.Model(inputs=inputs, outputs=outputs)
         self.model.compile(
             optimizer=tf.keras.optimizers.Adam(learning_rate=self.learning_rate),
             loss=self._loss(),
