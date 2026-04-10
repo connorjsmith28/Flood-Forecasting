@@ -23,7 +23,7 @@ class LSTMTransformer(BaseModel):
 
     def __init__(
         self,
-        lstm_units: tuple[int, int] = (64, 32),
+        lstm_units: tuple[int, int] = (64, 64),
         d_model: int = 32,
         num_heads: int = 2,
         ff_dim: int = 32,
@@ -61,7 +61,7 @@ class LSTMTransformer(BaseModel):
             self.lstm_units[1],
             return_sequences=True,  # keep sequences for transformer
             dropout=self.dropout_rate,
-            recurrent_dropout=0.1,
+            recurrent_dropout=0.0,
         )(x)
 
         x = Dense(self.d_model)(x)
