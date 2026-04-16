@@ -14,7 +14,12 @@ def pull_wandb(
     frequency: str | None = None,
 ) -> pl.DataFrame:
     api = wandb.Api(timeout=60)
-    artifact = api.artifact(f"connorjsmith28-rice-university/flood-forecasting/{file_path}:latest")
+    if ":" in file_path:
+        artifact_ref = f"connorjsmith28-rice-university/flood-forecasting/{file_path}"
+    else:
+        artifact_ref = f"connorjsmith28-rice-university/flood-forecasting/{file_path}:latest"
+    
+    artifact = api.artifact(artifact_ref)
     artifact_dir = artifact.download()
     df = pl.read_parquet(f"{artifact_dir}/{file_name}.parquet")
 
