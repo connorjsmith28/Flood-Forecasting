@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 
 
-_DEFAULT_THRESHOLDS = Path(__file__).resolve().parents[1] / "static" / "top_site_quantile_thesholds.json"
+_DEFAULT_THRESHOLDS = Path(__file__).resolve().parents[1] / "static" / "top_site_quantile_thresholds.json"
 
 # Ordered from least to most severe
 _RETURN_PERIODS = ["Q2_cfs", "Q5_cfs", "Q10_cfs", "Q25_cfs", "Q50_cfs", "Q100_cfs"]
