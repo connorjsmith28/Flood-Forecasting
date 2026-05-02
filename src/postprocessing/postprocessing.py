@@ -131,6 +131,8 @@ class PostProcessor:
             raise ValueError(f"'{streamflow_feature}' not found in feature_names.")
 
         streamflow_idx = self.feature_names.index(streamflow_feature)
+        # Last timestep of each sequence = the most recent observed streamflow,
+        # which is the naive "next value equals current value" persistence forecast
         persistence_scaled = self.X_test[:, -1, streamflow_idx]
         model_scaled = self._get_predictions_scaled()
 
@@ -232,6 +234,8 @@ class PostProcessor:
         n_samples, timesteps, n_features = X.shape
 
         print(f"Computing SHAP values via KernelSHAP (nsamples={nsamples})...")
+        # KernelSHAP requires 2D input, so we flatten (samples, timesteps, features)
+        # → (samples, timesteps*features) and re-wrap in the predict function
         flat_background = background.reshape(background_size, -1)
         flat_X = X.reshape(n_samples, -1)
 
@@ -394,8 +398,9 @@ class PostProcessor:
 
             # Apply exclusion filter before computing importance
             shap_filtered = shap_values[:, :, keep_idx]
-            mean_abs = np.abs(shap_filtered).mean(axis=(0, 1))  # define mean_abs first
-            mean_abs = np.where(mean_abs > 1e6, 0, mean_abs)    # then clip it
+            mean_abs = np.abs(shap_filtered).mean(axis=(0, 1))
+            # SHAP can return numerically unstable values for near-constant features; clip them
+            mean_abs = np.where(mean_abs > 1e6, 0, mean_abs)
             site_importance[site] = mean_abs
 
             # ── Printed table ─────────────────────────────────────────────

@@ -101,20 +101,21 @@ data/
   dagster/orchestration/ # Dagster assets and jobs
 src/
   elt/
-    extraction/         # Python scripts to fetch data from APIs
-    transformation/     # dbt project (staging + marts)
-  models/               # Model definitions (LSTM, GRU, Hybrid, TFT, GNN, Transformer)
-  preprocessing/        # Data preprocessing and GNN graph preprocessing
-  postprocessing/       # Inference, evaluation, and SHAP explainability
-  utils/                # Helper functions
-  static/               # Static assets (flood quantile thresholds)
+    extraction/         # Python scripts to fetch data from USGS and NLDAS-2
+    transformation/     # dbt project (staging + marts + final)
+    weights_biases_integration/  # W&B artifact sync
+  models/               # Model definitions (LSTM, GRU, Hybrid, TFT, Transformer)
+  preprocessing/        # Feature engineering, scaling, windowing, train/val/test split
+  postprocessing/       # Evaluation, SHAP explainability, flood classification
+  utils/                # Shared helpers (W&B download, DuckDB query, sequence creation)
+  static/               # Flood quantile thresholds JSON
 notebooks/
-  model_training/       # Training scripts + sweep configs (lstm/, gru/, hybrid/, tft/, gnn/)
-  model_exploration/    # Post-training analysis with SHAP (lstm/, gru/, hybrid/)
-  data_exploration/     # Data analysis notebooks
-demo/                   # Standalone demo (train.ipynb + inference.ipynb)
-models/                 # Saved model weights (.keras)
-artifacts/              # W&B dataset artifacts
+  train/                # Training notebooks + sweep configs (lstm/, gru/, hybrid/, tft/, gnn/)
+  test/                 # Evaluation notebooks (lstm/, gru/, hybrid/)
+  data_exploration/     # EDA, site coverage, correlation, flood frequency
+  demo/                 # Standalone demo notebook
+models/                 # Saved model weights (.keras, .pt) and preprocessors
+artifacts/              # W&B dataset artifacts (parquet, not version-controlled)
 brew/                   # Brewfile for macOS dependencies
 ```
 
@@ -125,7 +126,7 @@ brew/                   # Brewfile for macOS dependencies
 | Source | Data | API |
 |--------|------|-----|
 | USGS NWIS | Streamflow + site metadata | dataretrieval |
-| Open-Meteo | Hourly weather forcing | open-meteo.com |
+| NLDAS-2 V2.0 (NASA GES DISC) | Hourly weather forcing (11 variables) | earthaccess |
 
 **USGS Site Coverage (Missouri Basin / HUC 10):**
 - ~13,000 total stream gage sites in USGS database
@@ -147,12 +148,12 @@ Seed data comes from the [CAMELS dataset](https://www.osti.gov/pages/servlets/pu
 
 ## Creating New Models
 
-1. Copy `notebooks/model_training/lstm/series/lstm_model.ipynb` or any existing model notebook as a starting point
-2. Add a new `.py` training script and `.yml` sweep config under `notebooks/model_training/`
+1. Copy an existing notebook from `notebooks/train/` as a starting point
+2. Add a new `.py` training script and `.yml` sweep config under `notebooks/train/`
 3. Implement the model class in `src/models/` extending `BaseModel`
 4. Run with `just experiment <name>` or `just sweep <name>`
 
-See [notebooks/model_training/README.md](notebooks/model_training/README.md) for details.
+See [notebooks/train/README.md](notebooks/train/README.md) for details.
 
 ## Model Architectures
 
@@ -161,10 +162,10 @@ See [notebooks/model_training/README.md](notebooks/model_training/README.md) for
 | LSTM | Two-layer LSTM with optional asymmetric MSE loss (penalises under-prediction) |
 | GRU | Gated Recurrent Unit — lighter alternative to LSTM |
 | Hybrid | LSTM + Transformer encoder for sequence-to-scalar prediction |
-| TFT | Temporal Fusion Transformer via Darts library with attention explainability |
+| TFT | Temporal Fusion Transformer (custom Keras): GRNs, static context encoding, LSTM encoder, multi-head attention |
 | GNN | Spatio-temporal GNN: per-node LSTM → GATv2 message passing over river network |
 
-SHAP explainability analysis is available for LSTM, GRU, and Hybrid models via `src/postprocessing/postprocessing.py` and the `notebooks/model_exploration/` notebooks.
+SHAP explainability analysis is available for LSTM, GRU, and Hybrid models via `src/postprocessing/postprocessing.py` and the `notebooks/test/` evaluation notebooks.
 
 ## Tech Stack
 

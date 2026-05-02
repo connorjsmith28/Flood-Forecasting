@@ -250,6 +250,9 @@ class processor():
 
         shift_amount = 1 if self.config.get("frequency") == "daily" else 24
 
+        # Negative shift moves values backward (earlier rows get the future value),
+        # creating a 24h-ahead prediction target. .over("site_id") prevents the shift
+        # from bleeding across site boundaries when all sites are stacked in one DataFrame.
         df = df.with_columns(
             pl.col("streamflow_cfs_mean")
             .shift(-shift_amount)
@@ -273,9 +276,11 @@ class processor():
 
         original_cols = [v for v in self.config["input_cols"] if v not in static_col_names]
         static_cols = [v for v in self.config["input_cols"] if v in static_col_names]
-        lagged_cols = [f"{val}{idx}" for val in self.config["input_cols"] 
-                    if val not in static_col_names 
+        lagged_cols = [f"{val}{idx}" for val in self.config["input_cols"]
+                    if val not in static_col_names
                     for idx in range(1, self.config["lag_window"])]
+        # Column order matters: dynamic → static → lagged.
+        # TFT splits by num_static_features (trailing columns), so static cols must come last.
         model_input_cols = original_cols + static_cols + lagged_cols
 
         df = df.drop_nulls(subset=lagged_cols)

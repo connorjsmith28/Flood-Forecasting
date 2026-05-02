@@ -14,6 +14,8 @@ def pull_wandb(
     frequency: str | None = None,
 ) -> pl.DataFrame:
     api = wandb.Api(timeout=60)
+    # Artifact path format: "<entity>/<project>/<artifact_name>:<alias>"
+    # If file_path already contains a version/alias tag (":"), use as-is; otherwise append ":latest"
     if ":" in file_path:
         artifact_ref = f"connorjsmith28-rice-university/flood-forecasting/{file_path}"
     else:
@@ -35,7 +37,8 @@ def pull_wandb(
     if end_date is not None:
         df = df.filter(pl.col("observation_hour") <= pl.lit(end_date).str.strptime(pl.Datetime("us"), "%Y-%m-%d"))
     
-    # Filter to noon observations if daily frequency
+    # For "daily" frequency, keep only noon (12:00) rows so each calendar day
+    # contributes exactly one observation without duplicates or arbitrary picks
     if frequency == "daily":
         df = df.filter(pl.col("observation_hour").dt.hour() == 12)
 
