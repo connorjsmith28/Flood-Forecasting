@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>TFT Architecture — Flood Forecasting</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #e5e7eb;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    color: #1e293b;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 32px;
+  }
+
+  .slide {
+    width: 1280px;
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 48px 56px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+  }
+
+  h1 {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: #1d4ed8;
+    margin-bottom: 4px;
+  }
+  .subtitle {
+    font-size: 13px;
+    color: #64748b;
+    margin-bottom: 36px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 260px;
+    gap: 40px;
+    align-items: start;
+  }
+
+  /* ── Flow diagram ─────────────────────────────────────── */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+
+  .input-row {
+    display: flex;
+    gap: 16px;
+    width: 100%;
+    justify-content: center;
+    margin-bottom: 0;
+  }
+
+  .box {
+    border-radius: 10px;
+    padding: 12px 18px;
+    font-size: 12.5px;
+    font-weight: 600;
+    text-align: center;
+    position: relative;
+    line-height: 1.45;
+  }
+
+  .box .dim {
+    font-size: 10.5px;
+    font-weight: 400;
+    opacity: 0.72;
+    margin-top: 3px;
+  }
+
+  /* colour tokens */
+  .c-input    { background: #eff6ff; border: 1.5px solid #3b82f6; color: #1d4ed8; }
+  .c-static   { background: #ecfeff; border: 1.5px solid #06b6d4; color: #0e7490; }
+  .c-dynamic  { background: #f0fdf4; border: 1.5px solid #22c55e; color: #15803d; }
+  .c-grn      { background: #fff7ed; border: 1.5px solid #f97316; color: #c2410c; }
+  .c-ctx      { background: #faf5ff; border: 1.5px solid #a855f7; color: #7e22ce; }
+  .c-lstm     { background: #eff6ff; border: 1.5px solid #38bdf8; color: #0369a1; }
+  .c-attn     { background: #f0fdfa; border: 1.5px solid #2dd4bf; color: #0f766e; }
+  .c-enrich   { background: #fff7ed; border: 1.5px solid #fb923c; color: #c2410c; }
+  .c-output   { background: #f0fdf4; border: 2px solid #16a34a; color: #14532d; }
+  .c-norm     { background: #eef2ff; border: 1.5px dashed #6366f1; color: #4338ca; font-size: 11px; }
+
+  .arrow {
+    width: 2px;
+    background: #cbd5e1;
+    position: relative;
+    margin: 0 auto;
+  }
+  .arrow::after {
+    content: '▼';
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: #94a3b8;
+  }
+
+  .arrow-sm  { height: 18px; }
+  .arrow-md  { height: 26px; }
+
+  /* horizontal dotted connector from static ctx to right-side modules */
+  .ctx-row {
+    display: flex;
+    width: 100%;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 6px 0;
+  }
+  .ctx-tag {
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    background: #faf5ff;
+    border: 1px solid #7c3aed;
+    color: #6b21a8;
+  }
+  .ctx-label {
+    font-size: 11px;
+    color: #64748b;
+    text-align: center;
+    margin-bottom: 4px;
+  }
+
+  .wide { width: 100%; }
+  .w60  { width: 60%; }
+  .w50  { width: 50%; }
+
+  /* section separator */
+  .section-label {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #64748b;
+    background: #ffffff;
+    padding: 0 10px;
+    position: relative;
+    z-index: 1;
+    margin: 10px 0 6px;
+  }
+
+  /* ── Sidebar ─────────────────────────────────────────── */
+  .sidebar { display: flex; flex-direction: column; gap: 20px; }
+
+  .card {
+    background: #f8fafc;
+    border-radius: 10px;
+    padding: 16px 18px;
+    border: 1px solid #e2e8f0;
+  }
+  .card h3 {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    margin-bottom: 10px;
+  }
+  .kv { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; }
+  .kv .k { color: #64748b; }
+  .kv .v { color: #1e293b; font-weight: 600; }
+
+  .feat-list { font-size: 11.5px; color: #475569; line-height: 1.7; }
+  .feat-list span { color: #1e293b; }
+
+  .badge {
+    display: inline-block;
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-size: 10.5px;
+    font-weight: 700;
+    margin: 2px 2px 0 0;
+  }
+  .b-green  { background: #14532d; color: #86efac; }
+  .b-blue   { background: #1e3a5f; color: #93c5fd; }
+  .b-orange { background: #431407; color: #fdba74; }
+
+  .loss-note {
+    font-size: 11px;
+    color: #475569;
+    line-height: 1.6;
+    margin-top: 6px;
+  }
+  .loss-note strong { color: #dc2626; }
+
+  /* GRN explainer box */
+  .grn-box {
+    background: #fffbeb;
+    border: 1px solid #d97706;
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 11px;
+    color: #44403c;
+    line-height: 1.65;
+  }
+  .grn-box .title { font-weight: 700; color: #b45309; margin-bottom: 6px; font-size: 11.5px; }
+  .grn-box code { background: #fef3c7; padding: 1px 5px; border-radius: 3px; font-size: 10.5px; color: #92400e; }
+</style>
+</head>
+<body>
+<div class="slide">
+  <h1>Temporal Fusion Transformer &mdash; Architecture</h1>
+  <div class="subtitle">Flood Forecasting &nbsp;·&nbsp; Missouri River Basin &nbsp;·&nbsp; 24 h streamflow prediction</div>
+
+  <div class="layout">
+
+    <!-- ── Left: flow diagram ── -->
+    <div class="flow">
+
+      <!-- Input -->
+      <div class="input-row">
+        <div class="box c-dynamic" style="flex:1">
+          Dynamic Features
+          <div class="dim">14 vars &nbsp;×&nbsp; 72 h window<br>streamflow, precip, temp, humidity…</div>
+        </div>
+        <div class="box c-static" style="flex:1">
+          Static Features
+          <div class="dim">14 site attributes (time-invariant)<br>lat/lon, drainage area, soil, elev…</div>
+        </div>
+      </div>
+
+      <div class="arrow arrow-sm wide"></div>
+
+      <!-- Static encoder -->
+      <div class="section-label">① Static Covariate Encoder</div>
+      <div class="box c-grn w60">
+        GRN &nbsp;<span style="color:#94a3b8;font-weight:400">Gated Residual Network</span>
+        <div class="dim">static → d_model = 64</div>
+      </div>
+
+      <div class="arrow arrow-sm w60"></div>
+
+      <div class="ctx-label">Four context vectors injected into the rest of the network</div>
+      <div class="ctx-row">
+        <div class="ctx-tag">c_selection<br><span style="color:#9333ea;font-size:9.5px">feature gating</span></div>
+        <div class="ctx-tag">c_enrichment<br><span style="color:#9333ea;font-size:9.5px">final GRN</span></div>
+        <div class="ctx-tag">c_h<br><span style="color:#9333ea;font-size:9.5px">LSTM h₀</span></div>
+        <div class="ctx-tag">c_c<br><span style="color:#9333ea;font-size:9.5px">LSTM c₀</span></div>
+      </div>
+
+      <div class="arrow arrow-md wide"></div>
+
+      <!-- Dynamic projection -->
+      <div class="section-label">② Dynamic Feature Selection</div>
+      <div class="box c-grn w60">
+        Dense projection + GRN
+        <div class="dim">(batch, 72, 14) → (batch, 72, 64) &nbsp;|&nbsp; conditioned on c_selection</div>
+      </div>
+
+      <div class="arrow arrow-sm w60"></div>
+
+      <!-- LSTM -->
+      <div class="section-label">③ LSTM Encoder</div>
+      <div class="box c-lstm w60">
+        LSTM &nbsp;(return_sequences=True)
+        <div class="dim">units = 64 &nbsp;|&nbsp; h₀, c₀ from static context &nbsp;|&nbsp; → (batch, 72, 64)</div>
+      </div>
+
+      <div class="arrow arrow-sm w60"></div>
+      <div class="box c-norm w60" style="padding:6px 12px">Dropout (0.1) → Linear projection to d_model</div>
+      <div class="arrow arrow-sm w60"></div>
+
+      <!-- Attention -->
+      <div class="section-label">④ Temporal Self-Attention</div>
+      <div class="box c-attn w60">
+        Multi-Head Attention
+        <div class="dim">4 heads &nbsp;·&nbsp; key_dim = 16 &nbsp;·&nbsp; query = key = LSTM output</div>
+      </div>
+      <div class="arrow arrow-sm w60" style="height:8px"></div>
+      <div class="box c-norm w60" style="padding:6px 12px">Residual add + LayerNorm</div>
+
+      <div class="arrow arrow-sm w60"></div>
+
+      <!-- Enrichment GRN -->
+      <div class="section-label">⑤ Static Enrichment</div>
+      <div class="box c-enrich w60">
+        GRN conditioned on c_enrichment
+        <div class="dim">broadcast context over time axis before GRN</div>
+      </div>
+
+      <div class="arrow arrow-sm w60"></div>
+
+      <!-- Pooling + output -->
+      <div class="section-label">⑥ Prediction Head</div>
+      <div class="box c-norm w60" style="padding:8px 14px">Global Average Pooling → (batch, 64)</div>
+      <div class="arrow arrow-sm w60" style="height:8px"></div>
+      <div class="box c-output w60">
+        Dense(1) — Streamfloŵ (CFS, t+24 h)
+        <div class="dim">inverse-scaled to CFS after training</div>
+      </div>
+
+    </div>
+
+    <!-- ── Right: sidebar ── -->
+    <div class="sidebar">
+
+      <div class="card">
+        <h3>Hyperparameters</h3>
+        <div class="kv"><span class="k">Window</span><span class="v">72 h</span></div>
+        <div class="kv"><span class="k">Horizon</span><span class="v">24 h ahead</span></div>
+        <div class="kv"><span class="k">d_model</span><span class="v">64</span></div>
+        <div class="kv"><span class="k">LSTM units</span><span class="v">64</span></div>
+        <div class="kv"><span class="k">Attn heads</span><span class="v">4</span></div>
+        <div class="kv"><span class="k">Dropout</span><span class="v">0.1</span></div>
+        <div class="kv"><span class="k">Batch size</span><span class="v">512</span></div>
+        <div class="kv"><span class="k">Optimizer</span><span class="v">Adam 1e-3</span></div>
+        <div class="kv"><span class="k">Sites</span><span class="v">Top 30</span></div>
+      </div>
+
+      <div class="card">
+        <h3>Features</h3>
+        <div class="feat-list">
+          <span style="color:#15803d">Dynamic (14)</span><br>
+          streamflow (mean/max/min), gage height, precip, temp, PET, humidity, shortwave, longwave, wind, pressure, CAPE, conv. precip<br><br>
+          <span style="color:#0e7490">Static (14)</span><br>
+          lat, lon, drainage area, artificial path %, mean precip, snow, land cover, soil type &amp; density, elev, aspect
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Loss Function</h3>
+        <div class="loss-note">
+          Asymmetric MSE:<br>
+          <strong>2× penalty</strong> when model <em>under-predicts</em> flood peaks.<br><br>
+          <code style="font-size:11px;background:#fee2e2;color:#b91c1c;padding:3px 6px;border-radius:4px">
+            w = 2 if y &gt; ŷ else 1<br>
+            L = mean(w · (y − ŷ)²)
+          </code>
+        </div>
+      </div>
+
+      <div class="grn-box">
+        <div class="title">GRN block</div>
+        <code>h = ELU(Dense(x))</code><br>
+        <code>g = σ(Dense(h))</code><br>
+        <code>out = LayerNorm(g·h + skip)</code><br><br>
+        Gating controls how much of the transformation passes through. Skip projection added when input ≠ output dim.
+      </div>
+
+    </div>
+  </div>
+</div>
+</body>
+</html>

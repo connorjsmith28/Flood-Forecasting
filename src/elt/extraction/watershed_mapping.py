@@ -64,7 +64,7 @@ def generate_point_weights(
                 "site_id": site_id,
                 "grid_row": grid_row,
                 "grid_col": grid_col,
-                "area_weight": 1.0,
+                "area_weight": 1.0,  # nearest-cell only; true area-weighting requires watershed boundary delineation
             }
         )
 

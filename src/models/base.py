@@ -41,6 +41,8 @@ class BaseModel(ABC):
         penalty = self.under_predict_penalty
         def asymmetric_mse(y_true, y_pred):
             error = y_true - y_pred
+            # error > 0 means y_true > y_pred, i.e. the model under-predicted actual streamflow
+            # Apply the penalty there; over-predictions get weight=1 (standard MSE)
             weight = tf.where(error > 0, tf.cast(penalty, tf.float32), tf.cast(1.0, tf.float32))
             return tf.reduce_mean(weight * tf.square(error))
         return asymmetric_mse
