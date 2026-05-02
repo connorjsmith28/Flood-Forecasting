@@ -28,7 +28,34 @@ just sweep <model> 20        # Sweep with 20 runs
 2. Copy `test_model.yml` → `{name}.yml`
 3. Update the model code and sweep parameters
 
-## Tips
+## Starting a Model from Scratch
+
+To create and run a new model from the source code in `src/`:
+
+1. **Set up the environment:**
+   ```bash
+   uv sync
+   ```
+
+2. **Prepare the data:**
+   ```bash
+   just setup  # This runs data extraction and transformation
+   ```
+
+3. **Create a training script or notebook:**
+   - Start with an existing example from `notebooks/train/` (e.g., copy `gru/series/gru_model.ipynb`).
+   - Import model classes from `src/models/` (e.g., `from src.models.gru import GRUModel`).
+   - Use preprocessing utilities from `src/preprocessing/` and helpers from `src/utils/`.
+   - Configure the model parameters, features, and training settings.
+
+4. **Run the training:**
+   - Execute the notebook in VS Code or Jupyter.
+   - Alternatively, convert to a Python script and run with `uv run python your_script.py`.
+   - For hyperparameter sweeps, create a YAML config file and use `just sweep <model>`.
+
+5. **Monitor and log with W&B:**
+   - Ensure you have run `uv run wandb login`.
+   - Training runs will automatically log metrics, models, and artifacts to Weights & Biases.
 
 - **Runs are CLI-only**: W&B doesn't execute code. You run experiments locally (or on a server), and W&B logs the results.
 - **Sweeps are hyperparameter tuning**: A sweep defines a search space and runs your model with different parameter combinations to find the best config.
